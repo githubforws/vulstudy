@@ -8,7 +8,7 @@ import os
 from vulfocus.settings import client, REDIS_POOL
 from dockerapi.models import ImageInfo, SysLog
 from dockerapi.serializers import ImageInfoSerializer
-from dockerapi.common import R
+from dockerapi.common import R, get_setting_config
 from tasks.models import TaskInfo
 import django.utils.timezone as timezone
 import redis
@@ -217,9 +217,13 @@ def synchronous_image():
 @shared_task(name="tasks.update_images")
 def update_images():
     """
-    更新镜像信息
+    更新镜像信息 (受 is_synchronization 配置控制)
     """
     try:
+        config = get_setting_config()
+        if not config.get('is_synchronization'):
+            return
+
         image_infos = ImageInfo.objects.all()
         for image_info in image_infos:
             try:
@@ -255,9 +259,12 @@ def check_images():
 @shared_task(name="tasks.download_images")
 def download_images():
     """
-    下载镜像
+    下载镜像 (受 is_synchronization 配置控制)
     """
     try:
+        config = get_setting_config()
+        if not config.get('is_synchronization'):
+            return
         image_infos = ImageInfo.objects.filter(is_ok=False)
         for image_info in image_infos:
             try:

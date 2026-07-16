@@ -1,553 +1,426 @@
 <template>
-  <div class="app-container">
-    <el-row>
-      <el-col :span="16" v-for="(titem,index) in timelist" :key="index" >
-        <el-card>
-          <div slot="header" class="clearfix">
-            <span>时间模式信息</span>
-            <el-tooltip content="未启动" v-if="countlist.length ===0">
-              <i class="fa fa-stop" aria-hidden="true"></i>
-            </el-tooltip>
-            <el-tooltip v-else-if="titem.temp_id === countlist[0].temp_time_id" content="运行中">
-              <i style="color: #20a0ff;" class="el-icon-loading"></i>
-            </el-tooltip>
+  <div class="scene-detail-container app-container">
+    <el-row :gutter="24">
+      <!-- Main Content (16 cols) -->
+      <el-col :xs="24" :md="17" :lg="16">
+        <el-card shadow="never" class="detail-card">
+          <template #header>
+            <div class="detail-header">
+              <span>{{ sceneName || '计时场景' }}</span>
+              <el-tag v-if="isRunning" type="success" effect="dark">运行中</el-tag>
+              <el-tag v-else type="info">未启动</el-tag>
+            </div>
+          </template>
+
+          <div v-loading="loading" class="detail-body">
+            <div v-if="!loading">
+              <!-- Image -->
+              <el-image
+                :src="sceneImage"
+                fit="cover"
+                class="detail-img"
+              >
+                <template #error>
+                  <div class="img-placeholder"><el-icon :size="48"><Picture /></el-icon></div>
+                </template>
+              </el-image>
+
+              <h2>{{ sceneName }}</h2>
+
+              <!-- Timer Info -->
+              <el-row :gutter="16" class="detail-stats">
+                <el-col :span="8">
+                  <div class="stat-box">
+                    <span class="stat-label">计时时间</span>
+                    <span class="stat-value">{{ timerMinutes }} 分钟</span>
+                  </div>
+                </el-col>
+                <el-col :span="8">
+                  <div class="stat-box">
+                    <span class="stat-label">Rank范围</span>
+                    <span class="stat-value">{{ rankRange || '-' }}</span>
+                  </div>
+                </el-col>
+                <el-col :span="8">
+                  <div class="stat-box">
+                    <span class="stat-label">当前积分</span>
+                    <span class="stat-value score">{{ currentScore }}</span>
+                  </div>
+                </el-col>
+              </el-row>
+
+              <!-- Current Rank -->
+              <div class="current-rank">
+                当前排名：<strong>{{ currentRank > 0 ? `#${currentRank}` : '未上榜' }}</strong>
+              </div>
+
+              <!-- Countdown -->
+              <div v-if="isRunning && endTime" class="countdown-section">
+                <el-icon :size="20"><Clock /></el-icon>
+                <count-down
+                  :current-time="currentTime"
+                  :start-time="currentTime"
+                  :end-time="endTime"
+                  day-txt="天"
+                  hour-txt="小时"
+                  minutes-txt="分钟"
+                  seconds-txt="秒"
+                  :auto-start="true"
+                  @end-callback="handleTimerEnd"
+                />
+              </div>
+
+              <!-- Actions -->
+              <div class="timer-actions">
+                <el-button v-if="!isRunning" type="primary" :loading="startLoading" @click="startTimer">
+                  启动盲盒
+                </el-button>
+                <el-button v-else type="warning" :loading="stopLoading" @click="stopTimer">
+                  停止盲盒
+                </el-button>
+              </div>
+
+              <!-- Participants -->
+              <div class="participants">参加人数：{{ participantCount }}</div>
+
+              <!-- Description -->
+              <el-divider />
+              <div class="section-title">盲盒描述</div>
+              <p class="scene-desc">{{ sceneDesc }}</p>
+
+              <!-- Comments -->
+              <el-divider />
+              <div class="section-title">评论 ({{ commentList.length }})</div>
+              <div class="comment-input-area">
+                <el-input
+                  v-model="commentContent"
+                  type="textarea"
+                  :rows="3"
+                  maxlength="500"
+                  show-word-limit
+                  placeholder="写下你的评论..."
+                />
+                <el-button type="primary" @click="showCaptchaDialog">发表评论</el-button>
+              </div>
+
+              <div class="comment-list">
+                <div v-for="c in commentList" :key="c.comment_id" class="comment-item">
+                  <el-avatar :size="32" :src="c.user_avatar" />
+                  <div class="comment-body">
+                    <div class="comment-header">
+                      <span class="comment-user">{{ c.username }}</span>
+                      <span class="comment-time">{{ c.create_time }}</span>
+                    </div>
+                    <div class="comment-content">{{ c.content }}</div>
+                  </div>
+                  <el-button
+                    v-if="isAdmin || c.username === currentUser"
+                    text type="danger" size="small"
+                    @click="deleteComment(c.comment_id)"
+                  >删除</el-button>
+                </div>
+                <el-empty v-if="commentList.length === 0" description="暂无评论" :image-size="60" />
+              </div>
+            </div>
           </div>
-          <el-container>
-            <el-aside width="356px">
-              <img v-if="titem.image_name !==imgpath" :src="titem.image_name"  alt="" width="356px" height="248px"/>
-            </el-aside>
-            <el-main style="margin-top: -15px">
-              <el-row>
-                <el-col :span="19">
-                  <span class="info2">{{titem.name}}</span>
-                </el-col>
-              </el-row>
-              <el-row style="margin-top: 25px">
-                <el-col :span="5">
-                  <span class="info3">计时时间</span>
-                </el-col>
-                <el-col :span="19">
-                  {{ titem.time_range }}分钟
-                </el-col>
-              </el-row>
-              <el-row style="margin-top: 20px">
-                <el-col :span="5">
-                  <span class="info3">rank范围</span>
-                </el-col>
-                <el-col :span="19">
-                  {{ titem.rank_range }}
-                </el-col>
-              </el-row>
-              <el-row style="margin-top: 20px">
-                <el-col :span="5">
-                  <span class="info3">当前排名</span>
-                </el-col>
-                <el-col :span="19">
-                  <span v-if="currentRank === 0" >
-                    未上榜
-                  </span>
-                  <span v-else-if="currentRank > 0" >
-                    {{currentRank}}
-                  </span>
-                </el-col>
-              </el-row>
-              <el-row style="margin-top: 20px">
-                <el-col :span="5">
-                  <span class="info3">倒计时</span>
-                </el-col>
-                <el-col :span="19">
-                  <count-down style="margin-top: -15px" v-if="countlist.length >0 && countlist[0].temp_time_id === titem.temp_id" v-on:end_callback="autostop()" :currentTime="countlist[0].start_date" :startTime="countlist[0].start_date" :endTime="countlist[0].end_date" :dayTxt="'天'" :hourTxt="'小时'" :minutesTxt="'分钟'" :secondsTxt="'秒'">
-                  </count-down>
-                  <span v-else >未开始</span>
-                </el-col>
-              </el-row>
-              <el-row style="margin-top: 20px" v-if="countlist.length !==0">
-                <el-button class="btn1" style="margin-top: -15px" size="mini" v-if="titem.temp_id!== countlist[0].temp_time_id" @click="handleOk(titem)" >
-                  <span class="span1"><i class="el-icon-video-play" style="margin-right: 2px"></i>启动盲盒</span>
-                </el-button>
-                <el-button class="btn1" style="margin-top: -15px" size="mini" v-if="titem.temp_id === countlist[0].temp_time_id" @click="stop()">
-                  <span class="span1"><i class="el-icon-loading" style="margin-right: 2px"></i>停止盲盒</span>
-                </el-button>
-              </el-row>
-              <el-row style="margin-top: 20px" v-else-if="countlist.length===0">
-                <el-col>
-                  <el-button size="mini" class="btn1" @click="opendialog(titem)" >
-                    <span class="span1"><i class="el-icon-video-play" style="margin-right: 2px"></i>启动盲盒</span>
-                  </el-button>
-                  该场景已有
-                  <span class="span5">{{page.total}}</span>
-                  人参加
-                </el-col>
-              </el-row>
-            </el-main>
-            <el-aside width="60px">
-              <el-row>
-                <el-col>
-                  <span class="txt8">{{currentScore}}</span>
-                  <span class="word5">分</span>
-                </el-col>
-              </el-row>
-            </el-aside>
-          </el-container>
-          <el-divider></el-divider>
-          <el-container>
-            <el-main>
-              <el-row>
-                <span class="span2">盲盒描述</span>
-              </el-row>
-              <el-row style="margin-top: 24px">
-                <span class="span3"> {{ titem.time_desc }} </span>
-              </el-row>
-            </el-main>
-          </el-container>
-        </el-card>
-        <el-card style="margin-top: 20px;">
-          <el-row>
-            <el-col>
-              <span>评论</span>
-              <el-divider></el-divider>
-              <el-input rows="5" type="textarea" placeholder="既然来了就说点什么吧～" v-model="contentText" maxlength="500" show-word-limit></el-input>
-              <el-button size="small" @click="handleText" type="primary" style="float: right;margin-top: 10px">发表</el-button>
-            </el-col>
-          </el-row>
-          <el-row >
-            <el-col v-for="(item,index) in contentList" :key="index">
-              <el-card style="margin-top: 10px">
-              <el-container>
-                <el-aside width="48px" style="margin-top: 7px">
-                  <template>
-                    <img :src="item.user_avatar" style="width: 48px;height: 48px;border-radius: 50%;float: left;margin-top: 10px">
-                  </template>
-                </el-aside>
-                <el-main>
-                  <el-row>
-                    <el-col :span="3">
-                      <span class="span7">
-                        {{item.username}}
-                      </span>
-                    </el-col>
-                    <el-col :span="20">
-                      <span class="span8">
-                        {{item.create_time}}
-                      </span>
-                    </el-col>
-                  </el-row>
-                  <el-row style="margin-top: 5px">
-                    <span>{{item.content}}</span>
-                  </el-row>
-                </el-main>
-              </el-container>
-            </el-card>
-            </el-col>
-          </el-row>
         </el-card>
       </el-col>
-      <el-col style="margin-left: 10px" :span="7">
-        <el-card>
-          <div slot="header" class="clearfix">
-            <span>时间模式排名</span>
-          </div>
-          <div>
-            <el-table :data="tableData">
-<!--              <el-table-column label="序号" type="index" :index="computeTableIndex" width="50"></el-table-column>-->
-              <el-table-column type="index" label="排名" width="100px">
-                <template slot-scope="scope">
-                  <p v-if="page.currentPageNum*page.size+scope.$index+1-page.size>=4" style="margin-left: 15px">{{page.currentPageNum*page.size+scope.$index+1-page.size}}</p>
-                  <svg-icon icon-class="trophy1" v-if="page.currentPageNum*page.size+scope.$index+1-page.size===1"  style="margin-left: 15px;height: 48px"/>
-                  <svg-icon icon-class="trophy2" v-if="page.currentPageNum*page.size+scope.$index+1-page.size===2"  style="margin-left: 15px;height: 48px"/>
-                  <svg-icon icon-class="trophy3" v-if="page.currentPageNum*page.size+scope.$index+1-page.size===3"  style="margin-left: 15px;height: 48px"/>
-                </template>
-              </el-table-column>
-              <el-table-column prop="name" :show-overflow-tooltip=true label="用户名">
-                <template slot-scope="scope">
-                  <img :src="scope.row.avatar" style="width: 30px;height: 30px;border-radius: 50%;float: left;margin-top: 10px">
-                  <p style="float: left;margin-left: 5px;margin-top: 14px">{{scope.row.name}}</p>
-                </template>
-              </el-table-column>
-              <el-table-column prop="rank" label="积分" width="80"></el-table-column>
-            </el-table>
-          </div>
-          <div style="margin-top: 20px">
+
+      <!-- Sidebar - Rankings -->
+      <el-col :xs="24" :md="7" :lg="7">
+        <el-card shadow="never" class="rank-sidebar">
+          <template #header><span>计时排名</span></template>
+          <el-table :data="rankList" v-loading="rankLoading" stripe size="small" max-height="400">
+            <el-table-column label="#" width="50" align="center">
+              <template #default="scope">
+                <svg-icon v-if="scope.$index === 0" icon-class="trophy1" class="trophy g" />
+                <svg-icon v-else-if="scope.$index === 1" icon-class="trophy2" class="trophy s" />
+                <svg-icon v-else-if="scope.$index === 2" icon-class="trophy3" class="trophy b" />
+                <span v-else>{{ scope.$index + 1 }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="name" label="用户" min-width="80" />
+            <el-table-column prop="rank" label="积分" width="60" align="center" />
+          </el-table>
+          <div class="rank-pagination">
             <el-pagination
-              :page-size="page.size"
-              @current-change="StateChange"
-              time="total, prev, pager, next, jumper"
-              :total="page.total">
-            </el-pagination>
+              v-if="rankTotal > 20"
+              :page-size="20"
+              :total="rankTotal"
+              layout="prev, pager, next"
+              small
+              @current-change="fetchTimeRank"
+            />
           </div>
         </el-card>
       </el-col>
     </el-row>
-    <div style="margin-top: 20px">
-      <el-dialog :visible.sync="dialogVisible" title="请输入验证码" width="400px">
-      <el-form>
-        <el-form-item>
-          <el-row :span="24">
-            <el-col :span="8">
-              <el-input v-model="commentCode" auto-complete="off" placeholder="请输入验证码"></el-input>
-            </el-col>
-            <el-col :span="12">
-              <div class="login-code">
-                  <!--验证码组件-->
-                  <v-sidentify @getIdentifyCode="identifyCode"></v-sidentify>
-              </div>
-            </el-col>
-          </el-row>
-          <el-row>
-            <el-button type="primary" style="float: right" @click="commitText">确认</el-button>
-          </el-row>
-        </el-form-item>
-      </el-form>
+
+    <!-- Captcha Dialog -->
+    <el-dialog v-model="captchaDialog" title="验证码验证" width="360px" destroy-on-close>
+      <Verification ref="captchaRef" @update:code="captchaCode = $event" />
+      <el-input v-model="captchaInput" placeholder="输入验证码" style="margin-top: 12px" />
+      <template #footer>
+        <el-button @click="captchaDialog = false">取消</el-button>
+        <el-button type="primary" @click="verifyCaptcha">确认</el-button>
+      </template>
     </el-dialog>
-    </div>
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import { sceneGetTemp } from '@/api/timemoudel'
+import { start as startTimerMode, stoptimetemp, timeranklist, publicMethod } from '@/api/timemoudel'
+import { getComment, commitComment, CommentDelete } from '@/api/user'
+import CountDown from '@chenfengyuan/vue-countdown'
+import Verification from './components/verification.vue'
 
-import { mapGetters } from 'vuex'
-import CountDown from 'vue2-countdown'
-import { start,timetemplist,timeranklist,stoptimetemp,gettimetemp,publicMethod,sceneGetTemp } from '@/api/timemoudel'
-import verification from "./verification";
-import { commitComment, getComment } from '@/api/user'
+const route = useRoute()
+const userStore = useUserStore()
 
-export default {
-  inject: ['reload'],
-  name: 'timeindex.vue',
-  components: {
-    CountDown,
-    'v-sidentify':verification
-  },
-  data(){
-    return {
-      search: "",
-      get_time:"",
-      timelist:[],
-      countlist:[],
-      tableData:[],
-      imgpath: '/images/',
-      modelimg: require("../../assets/modelbg.jpg"),
-      page:{
-        total: 0,
-        size: 20,
-        page: 1,
-        currentPageNum:1,
-      },
-      currentRank:0,
-      currentScore:0,
-      rankList:[],
-      contentText:"",
-      contentList:[],
-      dialogVisible:false,
-      verificationCode:"",
-      commentCode:"",
-    }
-  },
-  computed: {
-    ...mapGetters([
-      'name',
-      'avatar',
-      'roles',
-      'rank'
-    ])
-  },
-  created() {
-    this.templist()
-    this.gettimelist()
-    this.StateChange()
-    this.initComment()
-  },
-  methods:{
-    identifyCode(data){
-      this.verificationCode = data
-    },
-    gettimelist(){
-      gettimetemp().then(response => {
-        let data = response.data.results
-          this.countlist = data
-          if (this.countlist.length===0){
-          }else {
-            this.countlist[0].end_date = publicMethod.getTimestamp(this.countlist[0].end_date)
-            this.countlist[0].start_date = publicMethod.getTimestamp(this.get_time)
-          }
-        }
-      )
-    },
-    templist(){
-      let temp_id = this.$route.query.temp_id
-      if (temp_id === undefined || temp_id == null || temp_id === ""){
-        this.$message({
-          message: "参数不能为空",
-          type: "error",
-        })
-        this.$router.push({path: "/scene/list"})
-      }
-      sceneGetTemp(temp_id).then(response =>{
-        let data = response.data
-        if (!data.image_name){
-            data.image_name = require("../../assets/modelbg.jpg")
-          }else {
-            // this.layout.image_name = require("../../assets/modelbg.jpg")
-            data.image_name = '/images/' + data.image_name
-          }
-        this.timelist.push(data)
-      })
-    },
-    stop(){
-      this.$confirm('是否取消挑战?', '提示', {
-        center: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        stoptimetemp().then(response => {
-          const data = response.data;
-          let msgType = 'success';
-          let msg = '';
-          if('2000'===data.code){
-            msg = '计时模式已经关闭！'
-          }else{
-            msgType = 'error';
-            msg = '关闭失败,内部错误';
-          }
-          this.$message({
-            type: msgType,
-            message: msg,
-          });
-        })
-        this.$router.push({ path: '/dashboard' })
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: '已取消'
-        });
-      });
-    },
-    opendialog(item){
-      this.item = item
-      if (item.flag_status===true){
-        this.$message({
-          type:"error",
-          message:item.time_range + "分钟挑战赛已经开始"
-        })
-      }else{
-      this.$confirm('是否开始挑战?', '提示', {
-        center: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        start(item).then(response => {
-          const data = response.data;
-          let msgType = 'success';
-          let msg = '';
-          if('200'===data.code){
-            msg = '计时模式开始启动！'
-          }else if ('2001' === data.code){
-            msg = '计时模式已经启动，请勿重新启动'
-          }else{
-            msgType = 'error';
-            msg = '内部错误';
-          }
-          this.$message({
-            type: msgType,
-            message: msg,
-          });
-        })
-        this.$router.push({ path: '/dashboard' })
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: '已取消挑战'
-        });
-      });
-    }},
-    handleOk(titem){
-      if (this.countlist.length!==0){
-        this.$message({
-          message: '已有时间模式在运行，请先关闭',
-          type: 'error'
-        })
-        return
-      }else{
-        this.opendialog(titem)
-      }
-    },
-    autostop(){
-      stoptimetemp().then(response => {
-          const data = response.data;
-          let msgType = 'success';
-          let msg = '';
-          if('2000'===data.code){
-            msg = '计时模式已经关闭！'
-          }else{
-            msgType = 'error';
-            msg = '关闭失败,内部错误';
-          }
-          this.$message({
-            type: msgType,
-            message: msg,
-          });
-        })
-    },
-    StateChange(page){
-      if(page == undefined || page == null || page == ""){page=1}
-      let temp_id = this.$route.query.temp_id
-      if (temp_id === undefined || temp_id == null || temp_id === ""){
-        this.$message({
-          message: "参数不能为空",
-          type: "error",
-        })
-        this.$router.push({path: "/scene/list"})
-      }
-      timeranklist(temp_id,page).then(response => {
-        this.tableData = response.data.results
-        this.page.total = response.data.count
-        this.currentScore = response.data.current_score
-        this.currentRank = response.data.current_rank
-        this.page.currentPageNum = page
-      })
-    },
-    handleText(){
-      this.dialogVisible = true
-    },
-    commitText(){
-      if (this.commentCode===this.verificationCode) {
-        let commentDict = new FormData()
-        commentDict.set("scene_id", this.$route.query.temp_id)
-        commentDict.set("content", this.contentText)
-        commentDict.set("scene_type", "TimingBlindBox")
-        commitComment(commentDict).then(response => {
-          if (response.data.status === 200) {
-            this.$message({
-              message: response.data.message,
-              type: "success",
-            })
-            this.dialogVisible = false
-            this.reload()
-          } else {
-            this.$message({
-              message: response.data.message,
-              type: "error",
-            })
-          }
-        })
-      }else {
-        this.$message({
-          message: '验证码错误',
-          type: "error",
-        })
-      }
-    },
-    initComment(){
-      let sceneId = this.$route.query.temp_id
-      getComment(sceneId).then(response=>{
-        this.contentList = response.data.results
-      })
-    }
-  },
-  mounted: function() {
-      var _this = this;
-      let yy = new Date().getFullYear();
-      let mm = new Date().getMonth()+1;
-      let dd = new Date().getDate();
-      let hh = new Date().getHours();
-      let mf = new Date().getMinutes()<10 ? '0'+new Date().getMinutes() : new Date().getMinutes();
-      let ss = new Date().getSeconds()<10 ? '0'+new Date().getSeconds() : new Date().getSeconds();
-      _this.get_time = yy+'-'+mm+'-'+dd+' '+hh+':'+mf+':'+ss;
-  }
+const tempId = computed(() => route.params.id)
+const isAdmin = computed(() => userStore.roles?.includes('admin'))
+const currentUser = computed(() => userStore.name)
+
+// State
+const loading = ref(true)
+const sceneName = ref('')
+const sceneDesc = ref('')
+const sceneImage = ref('')
+const isRunning = ref(false)
+const timerMinutes = ref(0)
+const rankRange = ref('')
+const currentRank = ref(0)
+const currentScore = ref(0)
+const participantCount = ref(0)
+const currentTime = ref(Math.floor(Date.now() / 1000))
+const endTime = ref(0)
+
+// Actions
+const startLoading = ref(false)
+const stopLoading = ref(false)
+
+// Rankings
+const rankList = ref([])
+const rankTotal = ref(0)
+const rankLoading = ref(false)
+
+// Comments
+const commentList = ref([])
+const commentContent = ref('')
+
+// Captcha
+const captchaDialog = ref(false)
+const captchaInput = ref('')
+const captchaCode = ref('')
+const captchaRef = ref(null)
+
+let timerInterval = null
+
+function fetchDetail() {
+  loading.value = true
+  sceneGetTemp(tempId.value)
+    .then(response => {
+      const data = response.data.data || response.data
+      sceneName.value = data.name || data.layout_name || ''
+      sceneDesc.value = data.desc || data.layout_desc || ''
+      sceneImage.value = data.image_name || ''
+      timerMinutes.value = data.timer_minutes || data.time_minutes || 0
+      rankRange.value = data.rank_range || ''
+      loading.value = false
+    })
+    .catch(() => {
+      loading.value = false
+    })
 }
+
+function fetchTimeRank(page = 1) {
+  rankLoading.value = true
+  timeranklist(tempId.value, page)
+    .then(response => {
+      const data = response.data
+      rankList.value = data.results || []
+      rankTotal.value = data.count || 0
+      currentRank.value = data.current_rank || 0
+      currentScore.value = data.current_score || 0
+      rankLoading.value = false
+    })
+    .catch(() => {
+      rankLoading.value = false
+    })
+}
+
+function fetchComments() {
+  getComment(tempId.value)
+    .then(response => {
+      commentList.value = response.data.results || []
+    })
+    .catch(() => {})
+}
+
+function checkTimerStatus() {
+  // This would check if a timer is already running via gettimetemp
+  // Simplified for now
+}
+
+function startTimer() {
+  startLoading.value = true
+  startTimerMode({ temp_id: tempId.value })
+    .then(response => {
+      const data = response.data
+      if (data.code === '2000' || data.status === 200) {
+        ElMessage.success('盲盒已启动')
+        isRunning.value = true
+        if (data.data) {
+          endTime.value = publicMethod.getTimestamp(data.data.end_date)
+        }
+        startTimerTick()
+      } else {
+        ElMessage.error(data.msg || '启动失败')
+      }
+      startLoading.value = false
+    })
+    .catch(() => {
+      startLoading.value = false
+    })
+}
+
+function stopTimer() {
+  stopLoading.value = true
+  stoptimetemp()
+    .then(() => {
+      ElMessage.success('盲盒已停止')
+      isRunning.value = false
+      clearInterval(timerInterval)
+      stopLoading.value = false
+    })
+    .catch(() => {
+      stopLoading.value = false
+    })
+}
+
+function startTimerTick() {
+  timerInterval = setInterval(() => {
+    currentTime.value = Math.floor(Date.now() / 1000)
+  }, 1000)
+}
+
+function handleTimerEnd() {
+  ElMessage.info('计时结束')
+  isRunning.value = false
+}
+
+function showCaptchaDialog() {
+  if (!commentContent.value.trim()) {
+    ElMessage.warning('请先输入评论内容')
+    return
+  }
+  captchaDialog.value = true
+  setTimeout(() => captchaRef.value?.refreshCode(), 200)
+}
+
+function verifyCaptcha() {
+  if (captchaInput.value.toLowerCase() !== captchaCode.value.toLowerCase()) {
+    ElMessage.error('验证码错误')
+    captchaRef.value?.refreshCode()
+    captchaInput.value = ''
+    return
+  }
+  commitComment({
+    sceneId: tempId.value,
+    content: commentContent.value,
+  })
+    .then(() => {
+      ElMessage.success('评论发表成功')
+      commentContent.value = ''
+      captchaDialog.value = false
+      captchaInput.value = ''
+      fetchComments()
+    })
+    .catch(() => {
+      ElMessage.error('评论发表失败')
+    })
+}
+
+function deleteComment(commentId) {
+  CommentDelete(commentId)
+    .then(() => {
+      ElMessage.success('评论已删除')
+      fetchComments()
+    })
+    .catch(() => {
+      ElMessage.error('删除失败')
+    })
+}
+
+onMounted(() => {
+  fetchDetail()
+  fetchTimeRank(1)
+  fetchComments()
+})
+
+onBeforeUnmount(() => {
+  if (timerInterval) clearInterval(timerInterval)
+})
 </script>
 
-<style scoped>
-.text {
-  font-size: 14px;
-}
+<style lang="scss" scoped>
+.scene-detail-container {
+  padding: 20px;
 
-.item {
-  margin-bottom: 18px;
-}
-.clearfix:before,
-.clearfix:after {
-  display: table;
-  content: "";
-}
-.clearfix:after {
-  clear: both
-}
-.filter-tag {
- width: 120px;
- /*height: 24px;*/
- text-align: center;
- line-height: 20px;
- color: #fff;
- background: #685d5d;
- border-radius: 20px 20px 20px 20px;
- margin-right: 10px;
-}
-.info2 {
-  width: 100px;
-  height: 20px;
-  font-size: 20px;
-  color: #303133;
-  line-height: 20px;
-}
-.info3 {
-  width: 56px;
-  height: 14px;
-  font-size: 14px;
-  color: rgba(48, 49, 51, 1);
-  /*display: block;*/
-  line-height: 14px;
-}
-.txt8 {
-  font-size: 28px;
-  color: rgba(64, 158, 255, 1);
-  line-height: 28px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+  .detail-card {
+    border-radius: 8px;
+    margin-bottom: 20px;
 
-.word5 {
-  font-size: 12px;
-  color: rgba(64, 158, 255, 1);
-  line-height: 28px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.btn1 {
-  width: 145px;
-  height: 42px;
-  background: #409EFF;
-  border-radius: 2px;
-}
-.span1 {
-  width: 72px;
-  height: 18px;
-  font-size: 18px;
-  font-weight: 400;
-  color: #FFFFFF;
-  line-height: 18px;
-}
-.span2 {
-  width: 80px;
-  height: 20px;
-  font-size: 20px;
-  color: #303133;
-  line-height: 20px;
-}
-.span3 {
-  width: 302px;
-  height: 14px;
-  font-size: 14px;
-  color: #606266;
-  line-height: 14px;
-}
-.span5 {
-  font-size: 24px;
-  color: rgba(1, 154, 39, 1);
-  line-height: 24px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+    .detail-header {
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .detail-body { min-height: 300px; }
+    .detail-img { width: 100%; max-height: 300px; border-radius: 6px; margin-bottom: 16px; }
+
+    .img-placeholder {
+      height: 200px; display: flex; align-items: center; justify-content: center;
+      background: #f0f2f5; color: #c0c4cc; border-radius: 6px;
+    }
+
+    h2 { margin: 0 0 16px; }
+
+    .detail-stats { margin-bottom: 16px; }
+    .stat-box { background: #f9fafb; border-radius: 8px; padding: 12px; text-align: center;
+      .stat-label { font-size: 12px; color: #909399; display: block; margin-bottom: 4px; }
+      .stat-value { font-size: 20px; font-weight: 600; &.score { color: #e6a23c; } }
+    }
+
+    .current-rank { font-size: 14px; margin-bottom: 12px; }
+    .countdown-section { display: flex; align-items: center; gap: 8px; font-size: 16px; margin-bottom: 12px; color: #e6a23c; font-weight: 600; }
+    .timer-actions { margin-bottom: 12px; }
+    .participants { font-size: 13px; color: #909399; margin-bottom: 12px; }
+    .section-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+    .scene-desc { color: #606266; font-size: 14px; line-height: 1.7; }
+
+    .comment-input-area { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 16px; .el-textarea { flex: 1; } }
+
+    .comment-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f2f5;
+      .comment-body { flex: 1; }
+      .comment-header { display: flex; justify-content: space-between; margin-bottom: 4px;
+        .comment-user { font-weight: 500; font-size: 13px; }
+        .comment-time { font-size: 11px; color: #c0c4cc; }
+      }
+      .comment-content { font-size: 13px; color: #606266; }
+    }
+  }
+
+  .rank-sidebar { border-radius: 8px;
+    .trophy { width: 18px; height: 18px; }
+    .trophy.g { color: #ffd700; }
+    .trophy.s { color: #c0c0c0; }
+    .trophy.b { color: #cd7f32; }
+    .rank-pagination { margin-top: 12px; display: flex; justify-content: center; }
+  }
 }
 </style>

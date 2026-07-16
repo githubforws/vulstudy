@@ -1,17 +1,28 @@
 <template>
-  <div :id="id" />
+  <div ref="editorEl" />
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import '@toast-ui/editor/dist/toastui-editor.css'
+import 'highlight.js/styles/github.css'
+import Editor from '@toast-ui/editor'
+import codeSyntaxHighlight from '@toast-ui/editor-plugin-code-syntax-highlight'
+import hljs from 'highlight.js'
 
-import 'codemirror/lib/codemirror.css' // codemirror
-import 'tui-editor/dist/tui-editor.css' // editor ui
-import 'tui-editor/dist/tui-editor-contents.css' // editor content
-import "highlight.js/styles/github.css"
-import viewer from '@/components/MarkdownEditor'
-import codeSyntaxHighlight from "@toast-ui/editor-plugin-code-syntax-highlight";
-import hljs from "highlight.js";
-import Editor from 'tui-editor'
+const model = defineModel({ type: String, default: '' })
+
+const props = defineProps({
+  options: { type: Object, default: () => ({}) },
+  mode: { type: String, default: 'markdown' },
+  height: { type: String, default: '300px' },
+  language: { type: String, default: 'en_US' },
+})
+
+const emit = defineEmits(['input'])
+
+const editorEl = ref(null)
+let editor = null
 
 const defaultOptions = {
   minHeight: '500px',
@@ -20,140 +31,86 @@ const defaultOptions = {
   useDefaultHTMLSanitizer: true,
   usageStatistics: false,
   hideModeSwitch: false,
-  viewer:true,
   toolbarItems: [
-    'heading',
-    'bold',
-    'italic',
-    'strike',
-    'divider',
-    'hr',
-    'quote',
-    'divider',
-    'ul',
-    'ol',
-    'task',
-    'indent',
-    'outdent',
-    'divider',
-    'table',
-    'image',
-    'link',
-    'divider',
-    'code',
-    'codeblock',
-  ]
+    'heading', 'bold', 'italic', 'strike', 'divider', 'hr', 'quote', 'divider',
+    'ul', 'ol', 'task', 'indent', 'outdent', 'divider', 'table', 'image', 'link',
+    'divider', 'code', 'codeblock',
+  ],
+  plugins: [[codeSyntaxHighlight, { hljs }]],
 }
 
-// const viewer = Editor.factory({
-//   el: document.querySelector('#viewer'),
-//   viewer:true,
-//   height:"500px",
-//   initialValue:'#hellow'
-// })
+function initEditor() {
+  if (!editorEl.value) return
 
-export default {
-  name: 'MarkdownEditor',
-  props: {
-    value: {
-      type: String,
-      default: ''
-    },
-    id: {
-      type: String,
-      required: false,
-      default() {
-        return 'markdown-editor-' + +new Date() + ((Math.random() * 1000).toFixed(0) + '')
-      }
-    },
-    options: {
-      type: Object,
-      default() {
-        return defaultOptions
-      }
-    },
-    mode: {
-      type: String,
-      default: 'markdown'
-    },
-    height: {
-      type: String,
-      required: false,
-      default: '300px'
-    },
-    language: {
-      type: String,
-      required: false,
-      default: 'en_US' // https://github.com/nhnent/tui.editor/tree/master/src/js/langs
-    }
-  },
-  data() {
-    return {
-      editor: null
-    }
-  },
-  computed: {
-    editorOptions() {
-      const options = Object.assign({}, defaultOptions, this.options)
-      options.initialEditType = this.mode
-      options.height = this.height
-      options.language = this.language
-      return options
-    }
-  },
-  watch: {
-    value(newValue, preValue) {
-      if (newValue !== preValue && newValue !== this.editor.getValue()) {
-        this.editor.setValue(newValue)
-      }
-    },
-    language(val) {
-      this.destroyEditor()
-      this.initEditor()
-    },
-    height(newValue) {
-      this.editor.height(newValue)
-    },
-    mode(newValue) {
-      this.editor.changeMode(newValue)
-    }
-  },
-  mounted() {
-    this.initEditor()
-  },
-  destroyed() {
-    this.destroyEditor()
-  },
-  methods: {
-    initEditor() {
-      this.editor = new Editor({
-        el: document.getElementById(this.id),
-        ...this.editorOptions
-      })
-      if (this.value) {
-        this.editor.setValue(this.value)
-      }
-      this.editor.on('change', () => {
-        this.$emit('input', this.editor.getValue())
-      })
-    },
-    destroyEditor() {
-      if (!this.editor) return
-      this.editor.off('change')
-      this.editor.remove()
-    },
-    setValue(value) {
-      this.editor.setValue(value)
-    },
-    getValue() {
-      return this.editor.getValue()
-    },
-    setHtml(value) {
-      this.editor.setHtml(value)
-    },
-    getHtml() {
-      return this.editor.getHtml()
+  const editorOptions = {
+    el: editorEl.value,
+    ...defaultOptions,
+    ...props.options,
+    initialEditType: props.mode,
+    height: props.height,
+    language: props.language,
+    initialValue: model.value || '',
+  }
+
+  editor = new Editor(editorOptions)
+
+  editor.on('change', () => {
+    const val = editor.getValue()
+    emit('input', val)
+    model.value = val
+  })
+}
+
+function destroyEditor() {
+  if (!editor) return
+  editor.off('change')
+  editor.destroy()
+  editor = null
+}
+
+function setValue(value) {
+  if (editor) editor.setValue(value)
+}
+
+function getValue() {
+  return editor ? editor.getValue() : ''
+}
+
+function setHtml(value) {
+  if (editor) editor.setHtml(value)
+}
+
+function getHtml() {
+  return editor ? editor.getHtml() : ''
+}
+
+watch(
+  () => model.value,
+  (newValue) => {
+    if (editor && newValue !== editor.getValue()) {
+      editor.setValue(newValue)
     }
   }
-}
+)
+
+watch(() => props.language, () => {
+  destroyEditor()
+  initEditor()
+})
+
+watch(() => props.height, (newValue) => {
+  if (editor) editor.height(newValue)
+})
+
+watch(() => props.mode, (newValue) => {
+  if (editor) editor.changeMode(newValue)
+})
+
+onMounted(() => {
+  initEditor()
+})
+
+onBeforeUnmount(() => {
+  destroyEditor()
+})
 </script>

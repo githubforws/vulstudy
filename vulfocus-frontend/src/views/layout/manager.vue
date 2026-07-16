@@ -1,725 +1,810 @@
 <template>
-  <div class="app-container" >
-    <div class="filter-container">
-      <el-input v-model="search" class="sceneSearch" size="medium" placeholder="请输入关键字进行搜索" @keyup.enter.native="handleQuery">
-        <i slot="prefix" class="el-input__icon el-icon-search"></i>
-      </el-input>
-    </div>
-    <div style="margin-top: 10px;">
-      <span>场景商店</span>
-      <span v-if="senceStoreList.length>5" @click="showactive" style="color: #999999;float: right" >{{ showBtnSence?"查看更多":"收起" }}</span>
-    </div>
-    <div style="position: relative;overflow: hidden;">
-      <el-drawer style="position:absolute;margin-top: 10px;color: #303133" title="场景商店"  :visible.sync="drawer" :direction="direction" size="100%">
-        <el-row style="margin-top: 10px" :gutter="20">
-          <el-col style="margin-top: 5px" v-for="(item,index1) in senceStoreList" :key="index1" :span="6">
-            <el-card :body-style="{ padding: '2px'}" shadow="hover">
-              <el-tooltip class="item" effect="dark" :content="item.layout_name" placement="top">
-                <img fit="contain" @click="download_website_layout(item.layout_id)" :src="item.image_name" height="260px" width="100%">
-              </el-tooltip>
-            </el-card>
-          </el-col>
-        </el-row>
-      </el-drawer>
-      <div class="filter-container">
-        <el-row style="margin-top: 10px">
-          <el-col :class="activeSceneClass === index1 ? 'current':''"  :xs="12" :sm="12" :lg="{span: '4-8'}" v-for="(item,index1) in senceStoreList" v-if="index1 < sceneLength" :key="index1" style="width: 20%">
-            <el-card :body-style="{ padding: '0px'}" shadow="hover">
-              <el-tooltip class="item" effect="dark" :content="item.layout_name" placement="top">
-                <img fit="contain" @click="download_website_layout(item.layout_id)" :src="item.image_name" height="180px" width="100%">
-              </el-tooltip>
-            </el-card>
-          </el-col>
-        </el-row>
-      </div>
-      <el-dialog :visible.sync="imageDialogVisible">
-        <img width="100%" :src="dialogImageUrl" alt="">
-      </el-dialog>
-      <el-dialog :visible.sync="ymlDialogVisible">
-        <el-input type="textarea" style="color:black;" autosize readonly v-model="dialogYml" ></el-input>
-      </el-dialog>
-      <el-tabs v-model="activeName" style="margin-top: 10px" @tab-click="currentTabs">
-        <el-tab-pane label="全部" name="all">
-          <div class="filter-container">
-            <el-row :gutter="23">
-              <el-col :span="4"  style="padding-bottom: 18px;">
-                <el-card shadow="hover" :body-style="{ padding: '0px'}" style="height: 328px">
-                  <el-row style="margin-top: 40%">
-                    <el-col :span="8" :offset="8">
-                      <i @click="addScene" class="el-icon-plus" style="font-size: 400%;position: relative;transform: translateX(20%)"></i>
-                    </el-col>
-                  </el-row>
-                  <el-row>
-                    <el-col :span="8" :offset="8">
-                      <span class="word2" style="font-size:110%;position: relative;transform: translateX(20%)">添加场景</span>
-                    </el-col>
-                  </el-row>
-                </el-card>
-              </el-col>
-              <el-col :span="4" v-for="(item,index) in sceneTableData" :key="index" style="padding-bottom: 18px;">
-                <el-card :body-style="{ padding: '0px'}" shadow="hover" style="height: 328px">
-                  <div style="position: relative">
-                    <div class="main" style="position: absolute;" v-if="item.is_release === false">
-                      <span class="word">未发布</span>
-                    </div>
-                    <img v-if="item.image_name !==imgpath" :src="item.image_name"  alt="" width="100%" height="250px"/>
-                    <img v-else-if="item.image_name===imgpath" :src="modelimg"  alt="" width="100%" height="250px" />
-                    <div v-if="item.is_release === false & item.type === 'layoutScene'" style="margin-top: -23px">
-                      <el-row style="background-color:rgba(0,0,0,0.3)">
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleShowYml(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-zoom-in">查看</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleEdit(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-edit">编辑</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleDelete(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-delete">删除</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleDownload(item.id,item.name)" :underline="false" style="color: #ffffff" icon="el-icon-download">下载</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link v-if="item.status.task_id === ''" type="info" @click="handleRelease(item.id,item.is_uesful)" :underline="false" style="color: #ffffff" icon="el-icon-position">发布</el-link>
-                          <el-link v-if="item.status.task_id !== ''" type="info" @click="openProgress(item,1)" :underline="false" style="color: #ffffff" icon="el-icon-loading">下载中</el-link>
-                        </el-col>
-                      </el-row>
-                    </div>
-                    <div v-else-if="item.is_release === true & item.type === 'layoutScene'" style="margin-top: -23px">
-                      <el-row style="background-color:rgba(0,0,0,0.3)">
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleShowYml(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-zoom-in">查看</el-link>
-                        </el-col>
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleEdit(item.id)" :underline="false" style="color: #ffffff"  icon="el-icon-edit">编辑</el-link>
-                        </el-col>
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleDelete(item.id)" :underline="false" style="color: #ffffff"  icon="el-icon-delete">删除</el-link>
-                        </el-col>
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleDownload(item.id,item.name)" :underline="false" style="color: #ffffff" icon="el-icon-download">下载</el-link>
-                        </el-col>
-                      </el-row>
-                    </div>
-                    <div v-else-if="item.type !== 'layoutScene'" style="margin-top: -23px">
-                      <el-row style="background-color:rgba(0,0,0,0.3)">
-  <!--                      <el-col :span="6" :offset="6">-->
-  <!--                        <el-link type="info" :underline="false" style="margin-top: -50px;" icon="el-icon-edit">编辑</el-link>-->
-  <!--                      </el-col>-->
-                        <el-col :span="12">
-                          <el-link type="info" @click="delSceneTemp(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-delete">删除</el-link>
-                        </el-col>
-                      </el-row>
-                    </div>
-                    <div class="container-title" style="margin-top: 0;">
-                      <span style="color:#303133;margin-left: 5px;font-size: 14px;">{{item.name}}</span>
-                    </div>
-                    <div class="bottom clearfix" style="margin-top: 10px;height: 60px;">
-                      <span style="color:#999;font-size: 14px;margin-left: 5px;" class="hoveDesc"> {{ item.desc }}</span>
-                    </div>
-                  </div>
-                </el-card>
-              </el-col>
-            </el-row>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="环境编排" name="layout">
-          <div class="filter-container">
-            <el-row :gutter="23">
-              <el-col :span="4" v-for="(item,index) in sceneTableData" :key="index" style="padding-bottom: 18px;">
-                <el-card :body-style="{ padding: '0px'}" shadow="hover" style="height: 328px">
-                  <div style="position: relative">
-                    <div class="main" style=" position: absolute" v-if="item.is_release === false">
-                      <span class="word">未发布</span>
-                    </div>
-                    <img v-if="item.image_name !==imgpath" :src="item.image_name"  alt="" width="100%" height="250px"/>
-                    <img v-else-if="item.image_name===imgpath" :src="modelimg"  alt="" width="100%" height="250px" />
-                    <div v-if="item.is_release === false & item.type === 'layoutScene'" style="margin-top: -23px">
-                      <el-row style="background-color:rgba(0,0,0,0.3)">
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleShowYml(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-zoom-in">查看</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleEdit(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-edit">编辑</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleDelete(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-delete">删除</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link type="info" @click="handleDownload(item.id,item.name)" :underline="false" style="color: #ffffff" icon="el-icon-download">下载</el-link>
-                        </el-col>
-                        <el-col :xs="12" :sm="12" :lg="{span: '4-8'}" style="width: 20%">
-                          <el-link v-if="item.status.task_id === ''" type="info" @click="handleRelease(item.id,item.is_uesful)" :underline="false" style="color: #ffffff" icon="el-icon-position">发布</el-link>
-                          <el-link v-if="item.status.task_id !== ''" type="info" @click="openProgress(item,1)" :underline="false" style="color: #ffffff" icon="el-icon-loading">下载中</el-link>
-                        </el-col>
-                      </el-row>
-                    </div>
-                    <div v-else-if="item.is_release === true & item.type === 'layoutScene'" style="margin-top: -23px;">
-                      <el-row style="background-color:rgba(0,0,0,0.3)">
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleShowYml(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-zoom-in">查看</el-link>
-                        </el-col>
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleEdit(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-edit">编辑</el-link>
-                        </el-col>
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleDelete(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-delete">删除</el-link>
-                        </el-col>
-                        <el-col :span="6" style="position: relative">
-                          <el-link type="info" @click="handleDownload(item.id,item.name)" :underline="false" style="color: #ffffff" icon="el-icon-download">下载</el-link>
-                        </el-col>
-                      </el-row>
-                    </div>
-                    <div class="container-title" style="margin-top: 0;">
-                      <span style="color:#303133;margin-left: 5px;font-size: 14px;">{{item.name}}</span>
-                    </div>
-                    <div class="bottom clearfix" style="margin-top: 10px;height: 60px;">
-                      <span style="color:#999;font-size: 14px;margin-left: 5px;" class="hoveDesc"> {{ item.desc }}</span>
-                    </div>
-                  </div>
-                </el-card>
-              </el-col>
-            </el-row>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="计时场景" name="time">
-          <div class="filter-container">
-            <el-row :gutter="23">
-              <el-col :span="4" v-for="(item,index) in sceneTableData" :key="index" style="padding-bottom: 18px;">
-                <el-card :body-style="{ padding: '0px'}" shadow="hover" style="height: 328px">
-                  <div style="position: relative">
-                    <img v-if="item.image_name !==imgpath" :src="item.image_name"  alt="" width="100%" height="250px"/>
-                    <img v-else-if="item.image_name===imgpath" :src="modelimg"  alt="" width="100%" height="250px" />
-                    <div v-if="item.type !== 'layoutScene'" style="margin-top: -23px;">
-                      <el-row style="background-color:rgba(0,0,0,0.3)">
-  <!--                      <el-col :span="6" :offset="6">-->
-  <!--                        <el-link type="info" :underline="false" style="margin-top: -50px;" icon="el-icon-edit">编辑</el-link>-->
-  <!--                      </el-col>-->
-                        <el-col :span="12">
-                          <el-link type="info" @click="delSceneTemp(item.id)" :underline="false" style="color: #ffffff" icon="el-icon-delete">删除</el-link>
-                        </el-col>
-                      </el-row>
-                    </div>
-                    <div class="container-title" style="margin-top: 0;">
-                      <span style="color:#303133;margin-left: 5px;font-size: 14px;">{{item.name}}</span>
-                    </div>
-                    <div class="bottom clearfix" style="margin-top: 10px;height: 60px;">
-                      <span style="color:#999;font-size: 14px;margin-left: 5px;" class="hoveDesc"> {{ item.desc }}</span>
-                    </div>
-                  </div>
-                </el-card>
-              </el-col>
-            </el-row>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-      <el-dialog title="选择创建类型" :visible.sync="selectSceneDialog" width="20%" center>
-        <el-row>
-          <el-col :span="8" :offset="8" style="position: relative;transform: translateX(-5%)">
-            <el-button @click="handleOpenCreate" type="primary" plain>创建编排模式</el-button>
-          </el-col>
-        </el-row>
-        <el-row style="margin-top: 10%">
-          <el-col :span="8" :offset="8" style="position: relative;transform: translateX(-5%)">
-            <el-button @click="handleCreateTemp" type="primary" plain>创建计时模式</el-button>
-          </el-col>
-        </el-row>
-      </el-dialog>
-      <el-dialog :visible.sync="createSceneTempDialog" title="创建计时盲盒" width="80%" height="100%">
-        <v-createtemp></v-createtemp>
-      </el-dialog>
-      <el-dialog :visible.sync="progressShow" :title=progress.title width="60%" :before-close="closeProgress">
-        <div v-loading="progressLoading">
-          <el-row v-for="(item,index) in progress.layer" style="margin-bottom: 10px; height: 24px;" >
-            <el-tag style="float: left; width: 15%;height: 24px; line-height: 24px;" align="center">{{item.id}}</el-tag>
-            <div style="float: left;width: 80%;margin-left: 10px;">
-              <el-progress :percentage="item.progress" :text-inside="true" :stroke-width="24" status="success" v-if="item.progress === 100.0"></el-progress>
-              <el-progress :percentage="item.progress" :text-inside="true" :stroke-width="24" v-else></el-progress>
-            </div>
-          </el-row>
+  <div class="layout-manager-container app-container">
+    <!-- Header & Search -->
+    <el-card shadow="never" class="search-card">
+      <div class="search-area">
+        <el-input
+          v-model="searchQuery"
+          placeholder="按关键字搜索场景"
+          style="width: 360px; background: #f2f4f7"
+          clearable
+          size="default"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-button type="primary" @click="handleSearch">搜索</el-button>
+
+        <!-- Official Store Preview -->
+        <div class="store-preview">
+          <span class="store-label">场景商店：</span>
+          <template v-if="officialScenes.length > 0">
+            <span
+              v-for="item in officialScenes.slice(0, 5)"
+              :key="item.layout_id"
+              class="store-link"
+              @click="downloadOfficial(item)"
+            >{{ item.layout_name }}</span>
+          </template>
+          <span v-else style="color: #c0c4cc; font-size: 13px;">暂无官方场景</span>
+          <el-link v-if="officialScenes.length > 5" type="primary" :underline="false" style="margin-left: 8px;" @click="storeDrawer = true">
+            查看更多 >
+          </el-link>
         </div>
-      </el-dialog>
-      <div style="margin-top: 20px">
-        <el-pagination
-          :page-size="page.size"
-          @current-change="layoutListData"
-          layout="total, prev, pager, next, jumper"
-          :total="page.total">
-        </el-pagination>
       </div>
-    </div>
+    </el-card>
+
+    <!-- Tabs -->
+    <el-card shadow="never" class="scene-card">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <el-tab-pane label="全部" name="all" />
+        <el-tab-pane label="环境编排" name="layout" />
+        <el-tab-pane label="计时场景" name="time" />
+      </el-tabs>
+
+      <!-- Scene Grid -->
+      <div v-loading="loading" class="scene-grid">
+        <el-row :gutter="[20, 24]" v-if="!loading">
+          <!-- Add Card (only on all/layout tab) -->
+          <el-col v-if="activeTab !== 'time'" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+            <el-card shadow="hover" class="add-card" @click="openCreateDialog">
+              <div class="add-card-content">
+                <el-icon :size="48"><Plus /></el-icon>
+                <span>添加场景</span>
+              </div>
+            </el-card>
+          </el-col>
+
+          <!-- Scene Cards -->
+          <el-col
+            v-for="item in displayList"
+            :key="item.id"
+            :xs="24" :sm="12" :md="8" :lg="6" :xl="6"
+          >
+            <el-card shadow="hover" :body-style="{ padding: '0' }" class="scene-card-item">
+              <!-- Image -->
+              <div class="scene-img-wrap">
+                <el-image :src="item.image_name || '/logo.svg'" fit="cover" class="scene-img">
+                  <template #error>
+                    <div class="img-placeholder"><el-icon :size="40"><Picture /></el-icon></div>
+                  </template>
+                </el-image>
+                <!-- Not published badge -->
+                <div v-if="!item.is_release && item.type === 'layoutScene'" class="unpublished-badge">未发布</div>
+                <!-- Action buttons overlay -->
+                <div class="action-overlay">
+                  <el-button v-if="item.type === 'layoutScene'" size="small" :icon="View" @click.stop="handleViewYaml(item)">查看</el-button>
+                  <el-button size="small" :icon="Edit" @click.stop="handleEdit(item)">编辑</el-button>
+                  <el-button size="small" :icon="Delete" type="danger" @click.stop="handleDelete(item)">删除</el-button>
+                  <template v-if="item.type === 'layoutScene'">
+                    <el-button
+                      v-if="!item.is_release && item.status?.progress !== 100"
+                      size="small" :icon="Upload"
+                      @click.stop="handlePublish(item)"
+                    >发布</el-button>
+                    <el-tag v-else-if="item.is_release" size="small" type="success">已发布</el-tag>
+                    <el-button
+                      v-if="item.status?.progress !== 100"
+                      size="small" :icon="Download"
+                      @click.stop="handleDownload(item)"
+                    >下载</el-button>
+                    <el-button
+                      v-if="item.status?.task_id && item.status?.progress < 100"
+                      size="small" type="warning"
+                      @click.stop="showProgress(item)"
+                    >{{ item.status?.progress || 0 }}%</el-button>
+                  </template>
+                </div>
+              </div>
+              <!-- Info -->
+              <div class="scene-info">
+                <h4 class="scene-name">{{ item.name }}</h4>
+                <p class="scene-desc">{{ item.desc }}</p>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+        <el-empty v-if="!loading && displayList.length === 0" description="暂无场景数据" />
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="total > 0" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next, jumper"
+          background
+          @current-change="handlePageChange"
+        />
+      </div>
+    </el-card>
+
+    <!-- ═══ Official Store Drawer ═══ -->
+    <el-drawer v-model="storeDrawer" title="官方场景商店" size="80%" destroy-on-close>
+      <el-row :gutter="[20, 24]">
+        <el-col
+          v-for="item in officialScenes"
+          :key="item.layout_id"
+          :xs="24" :sm="12" :md="8" :lg="6"
+        >
+          <el-card shadow="hover" :body-style="{ padding: '0' }" class="store-card" @click="downloadOfficial(item)">
+            <el-image :src="item.image_name" fit="cover" class="store-img">
+              <template #error>
+                <div class="img-placeholder" style="height: 180px;"><el-icon :size="32"><Picture /></el-icon></div>
+              </template>
+            </el-image>
+            <div class="store-card-info">
+              <span>{{ item.layout_name }}</span>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+      <el-empty v-if="officialScenes.length === 0" description="暂无官方场景" />
+    </el-drawer>
+
+    <!-- ═══ Create Dialog ═══ -->
+    <el-dialog v-model="createDialogVisible" title="创建场景" width="420px" destroy-on-close>
+      <div class="create-options">
+        <div class="create-option-card" @click="handleCreateLayout">
+          <el-icon :size="40"><Collection /></el-icon>
+          <span class="option-title">创建编排模式</span>
+          <span class="option-desc">使用 Docker Compose 编排多容器场景</span>
+        </div>
+        <div class="create-option-card" @click="handleCreateTime">
+          <el-icon :size="40"><Timer /></el-icon>
+          <span class="option-title">创建计时模式</span>
+          <span class="option-desc">创建限时挑战的盲盒场景</span>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- ═══ Time Template Dialog ═══ -->
+    <el-dialog v-model="timeDialogVisible" title="创建计时模板" width="500px" destroy-on-close :close-on-click-modal="false">
+      <el-form ref="timeFormRef" :model="timeForm" label-width="110px" size="small">
+        <el-form-item label="模板名称" prop="name" :rules="[{ required: true, message: '请输入名称' }]">
+          <el-input v-model="timeForm.name" placeholder="输入计时模板名称" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="timeForm.time_desc" type="textarea" :rows="3" placeholder="输入描述" />
+        </el-form-item>
+        <el-form-item label="时间(分钟)" prop="timer_minutes" :rules="[{ required: true, message: '请输入时间' }]">
+          <el-input-number v-model="timeForm.timer_minutes" :min="1" :max="1440" />
+        </el-form-item>
+        <el-form-item label="Rank范围">
+          <el-input v-model="timeForm.rank_range" placeholder="如 0.5-5.0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="timeDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="timeSaving" @click="submitTimeTemplate">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ═══ YAML View Dialog ═══ -->
+    <el-dialog v-model="yamlDialogVisible" title="YAML 内容" width="700px" destroy-on-close>
+      <el-input v-model="yamlContent" type="textarea" :rows="16" readonly />
+    </el-dialog>
+
+    <!-- ═══ Progress Dialog ═══ -->
+    <el-dialog v-model="progressDialogVisible" :title="progressTitle" width="550px" :close-on-click-modal="false" @close="clearProgressTimer">
+      <el-table :data="progressLayers" stripe size="small" max-height="400">
+        <el-table-column prop="id" label="层 ID" min-width="180" show-overflow-tooltip />
+        <el-table-column label="进度" width="200">
+          <template #default="scope">
+            <el-progress :percentage="scope.row.progress || 0" :stroke-width="14" />
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
-<script>
-import {layoutList, layoutRelease, layoutDelete,layoutDownload,download_layout_image,getOfficialWebsiteLayout,downloadWebsiteLayout } from '@/api/layout'
+<script setup>
+import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { Search, Plus, View, Edit, Delete, Upload, Download, Collection, Timer, Picture } from '@element-plus/icons-vue'
+import {
+  layoutList, layoutDelete, layoutRelease, layoutDownload,
+  download_layout_image, getOfficialWebsiteLayout, downloadWebsiteLayout,
+} from '@/api/layout'
 import { getSceneData } from '@/api/scene'
-import { timetempdelete } from '@/api/timemoudel'
-import {layoutbathchTask} from '@/api/tasks'
-import timetemp from "../manager/timetemp";
-import { progressTask } from '@/api/tasks'
-export default {
-  name: 'manager',
-  inject: ['reload'],
-  data(){
-    return {
-      tableData: [],
-      search: "",
-      page:{
-        total: 0,
-        size: 20,
-      },
-      isRelease: false,
-      imageDialogVisible: false,
-      dialogImageUrl: "",
-      ymlDialogVisible: false,
-      dialogYml: "",
-      activeName:'all',
-      imgpath: '/images/',
-      modelimg: require("../../assets/modelbg.jpg"),
-      sceneTableData:[],
-      selectSceneDialog:false,
-      createSceneTempDialog:false,
-      showBtnSence:true,
-      senceStoreList:[],
-      newLayoutFile: new FormData(),
-      taskCheckInterval :null,
-      taskList: [],
-      taskDict: {},
-      progress:{
-        "title":"",
-        "layer":[],
-        "total":0,
-        "count":0,
-        "progress":0.0,
-        "progressInterval": null,
-      },
-      progressShow: false,
-      progressLoading: false,
-      activeSceneClass:0,
-      sceneLength:5,
-      drawer:false,
-      direction:'ttb'
+import { timetempadd, timetempdelete } from '@/api/timemoudel'
+import { layoutbathchTask, progressTask } from '@/api/tasks'
 
-    }
-  },
-  components:{
-    'v-createtemp':timetemp
-  },
-  created() {
-    // this.layoutListData(1)
-    this.getScene()
-    this.get_official_website()
-  },
-  methods:{
-    layoutListData(page){
-      this.tableData = []
-      layoutList(this.search, page).then(response => {
-        let rsp = response.data
-        rsp.results.forEach((info,index) => {
-          info.image_name = '/images/'+ info.image_name
-          this.tableData.push(info)
-        })
-        this.page.total = rsp.count
-      }).catch(err => {
-        this.$message({
-          type: 'error',
-          message: '服务器内部错误!'
-        })
-      })
-    },
-    handleQuery(){
-      // this.tableData = []
-      // this.layoutListData(1)
-      this.getScene(1)
-    },
-    handleOpenCreate(){
-      this.$router.push({path:'/layout/index'})
-    },
-    handleDelete(id){
-      this.$confirm('确认删除？删除会影响用户得分', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(()=>{
-        let ids = String(id)
-        layoutDelete(ids).then(response => {
-          let rsp = response.data
-          if(rsp.status === 200){
-            this.$message({
-              message: "删除成功",
-              type: 'success'
-            })
-            this.getScene(1)
-          }else{
-            this.$message({
-              message: rsp.msg,
-              type: 'error'
-            })
-          }
-        }).catch(err => {
-          this.$message({
-            message: "服务器内部错误",
-            type: 'error'
-          })
-        })
-      }).catch()
-    },
-    handleShowImage(row){
-      this.dialogImageUrl = row.image_name
-      this.imageDialogVisible = true
-    },
-    handleShowYml(id){
-      if (id){
-        let ids = String(id)
-        layoutList(ids).then(response=>{
-          let rsp = response.data
-          let yml_content = ''
-          rsp.results.forEach((info,index) => {
-            yml_content = info.yml_content
-          })
-          this.dialogYml = yml_content
-          this.ymlDialogVisible = true
-        })
-      }else {
-        this.$message({
-          type: 'error',
-          message: '不存在的场景!'
-        })
-      }
-    },
-    handleEdit(id){
-      if (id){
-        let ids = String(id)
-        layoutList(ids).then(response=>{
-          let rsp = response.data
-          let rows = {}
-          rsp.results.forEach((info,index) => {
-            rows = info
-          })
-          this.$router.push({path:'/layout/index', query: {layoutId: ids, layoutData: rows}})
-        })
-      }else {
-        this.$message({
-          type: 'error',
-          message: '不存在的场景!'
-        })
-      }
-    },
-    handleRelease(id,is_uesful){
-      let ids = String(id)
-      if (is_uesful === false){
-      this.$confirm('相关镜像未下载，下载后可发布，是否下载?', '提示', {
-        center: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        this.downloadImage(ids)
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: '已取消下载'
-        });
-      });
-      }else {
-      layoutRelease(ids).then(response=>{
-        let rsp = response.data
-        let status = rsp.status
-        if (status === 200){
-          this.$message({
-            message: "发布成功",
-            type: 'success'
-          })
-          this.getScene(1)
-        }else{
-          this.$message({
-            message: rsp.msg,
-            type: 'error'
-          })
-        }
-      }).catch(err => {
-        this.$message({
-          message: "服务器内部错误",
-          type: 'error'
-        })
-      })
-    }
-    },
-    handleCreateTemp(){
-      this.createSceneTempDialog = true
-    },
-    delSceneTemp(id){
-      let ids = String(id)
-      timetempdelete(ids).then(response => {
-        let data = response.data
-        if (data.code === 200){
-          this.$message({
-            type:'success',
-            message: data.message
-          })
-          this.getScene(1)
-        }else{
-          this.$message({
-            type:'error',
-            message: data.message
-          })
-        }
-      })
-    },
-    currentTabs(tab, event){
-      this.activeName = tab.name
-      this.getScene(1,this.activeName)
-    },
-    getScene(page){
-      getSceneData(this.search,page,this.activeName,'backstage').then(response=>{
-        this.sceneTableData = []
-        if (response.data.code === 200){
-          response.data.result.forEach((info,index) => {
-            info.image_name = '/images/'+ info.image_name
-            this.sceneTableData.push(info)
-          })
-          this.page.total = response.data.count
-        }else {
-          this.$message({
-            type: 'error',
-            message: '数据返回失败!'
-          })
-        }
-      })
-    },
-    addScene(){
-      this.selectSceneDialog = true
-    },
-    handleDownload(id,name){
-      let ids = String(id)
-      layoutDownload(ids).then(response => {
-        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
-        const link = window.document.createElement('a')
-        link.style.display = 'none'
-        link.href = url
-        link.setAttribute('download', name+'.zip')
-        document.body.appendChild(link)
-        link.click()
-      })
-    },
-    checkTask(tableData){
-      tableData.forEach((item,index, arr) => {
-        let isUserful = item["is_uesful"]
-        let taskId = item["status"]["task_id"]
-        if(isUserful === false && taskId !=null && taskId !== ""){
-          if(this.taskList.indexOf(taskId) === -1){
-            this.taskList.push(taskId)
-            this.taskDict[taskId] = item
-          }
-        }
-      })
-      let taskIdStr = this.taskList.join(",")
-      if(taskIdStr !=null && taskIdStr !==""){
-        let formData = new FormData()
-        formData.set("task_ids", taskIdStr)
-        layoutbathchTask(formData).then(response => {
-          let data = response.data.data
-          for(let key in data){
-            let taskMsg = data[key]
-            let status = taskMsg["status"]
-            if(status!==1){
-              this.removeArray(this.taskList, key)
-              this.taskDict[key].is_uesful = true
-              this.$notify({
-                    message: '场景下载成功',
-                    type: 'success'
-                  })
-            }
-            else{
-              this.taskDict[key].status.progress = taskMsg["progress"]
-            }
-          }
-          if(this.taskLists.length === 0 || this.taskLists === null){
-            this.taskLists = []
-            this.taskDict = {}
-            clearInterval(this.taskCheckInterval)
-          }
-        })
-      }
-    },
-    removeArray(taskList,val){
-      for(let i = 0; i < taskList.length; i++) {
-        if(taskList[i] === val) {
-          taskList.splice(i, 1);
-          break;
-        }
-      }
-    },
-    downloadImage(ids){
-      let formdata = new FormData()
-      formdata.set("layout_image_id",ids)
-      download_layout_image(formdata).then(response => {
-        let data = response.data
-        if(data.code === 200){
-          this.$message({
-            message:data.msg,
-            type:'success'
-          })
-          this.reload()
-        }
-        else{
-          this.$message({
-            message:data.msg,
-            type:'error'
-          })
-        }
-      })
-      this.getScene(1)
-    },
-    openProgress(item,flag){
-        this.progress = {
-          "title":"",
-          "layer":[],
-          "total":0,
-          "count":0,
-          "progress":0.0,
-          "progressInterval": null,
-        }
-        this.progressShow = true
-        this.progressLoading = true
-        let taskId = item.status.task_id
-        if(flag === 1){
-          this.progress.title = "下载相关镜像："+item.name
-        }else{
-          this.progress.title = "分享镜像："+row.image_name
-        }
-        this.progress.progressInterval = window.setInterval(() => {
-          setTimeout(()=>{
-            this.progressLoading = false
-            progressTask(taskId).then(response => {
-              if(response.data.data != null  && response.data.status === 200){
-                this.progress.count = response.data.data.progress_count
-                this.progress.progress = response.data.data.progress
-                this.progress.total = response.data.data.total
-                this.progress.layer = response.data.data.layer
-                if(this.progress.progress === 100.0 || (this.progress.count !== 0 && this.progress.total !== 0 && this.progress.count === this.progress.total)){
-                  clearInterval(this.progress.progressInterval)
-                  this.progressShow = false
-                }
-              }
-            })
-          },1.5)
-        },2000)
-      },
-    closeProgress(){
-      this.progressShow = false
-      this.progressLoading = false
-      try {
-        clearInterval(this.progress.progressInterval)
-      }catch (e) {
+// ── Constants ──
+const pageSize = 20
 
-      }
-    },
-    get_official_website(){
-      getOfficialWebsiteLayout().then(response=>{
-        this.senceStoreList = response.data.data
-      })
-    },
-    download_website_layout(id){
-      let layoutdata = new FormData()
-      if (id){
-        let ids = String(id)
-        layoutdata.set("layout_id",ids)
-        this.$confirm('是否下载官网场景信息?', '提示', {
-        center: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-        }).then(() => {
-          downloadWebsiteLayout(layoutdata).then(response=>{
-            if (response.data.code===200){
-              this.$message({
-                type: 'success',
-                message: response.data.msg
-              });
-              this.reload()
-            }else {
-              this.$message({
-                type: 'error',
-                message: response.data.msg
-              });
-            }
-          })
-        }).catch(() => {
-          this.$message({
-            type: 'info',
-            message: '已取消下载'
-          });
-        });
-      }else {
-        this.$message({
-          type: 'error',
-          message: '错误的场景id'
-        });
-      }
-    },
-    showactive(){
-      this.drawer = true
+// ── Router ──
+const router = useRouter()
+
+// ── State: Search & Tabs ──
+const searchQuery = ref('')
+const activeTab = ref('all')
+const loading = ref(false)
+const sceneList = ref([])
+const total = ref(0)
+const currentPage = ref(1)
+
+// ── State: Official Store ──
+const officialScenes = ref([])
+const storeDrawer = ref(false)
+
+// ── State: Create Dialog ──
+const createDialogVisible = ref(false)
+
+// ── State: Time Template ──
+const timeDialogVisible = ref(false)
+const timeFormRef = ref(null)
+const timeSaving = ref(false)
+const timeForm = reactive({
+  name: '',
+  time_desc: '',
+  timer_minutes: 30,
+  rank_range: '',
+})
+
+// ── State: YAML Dialog ──
+const yamlDialogVisible = ref(false)
+const yamlContent = ref('')
+
+// ── State: Progress Dialog ──
+const progressDialogVisible = ref(false)
+const progressTitle = ref('')
+const progressLayers = ref([])
+let progressTimer = null
+
+// ── Task Polling ──
+let taskPollTimer = null
+
+// =====================================================================
+//  Computed
+// =====================================================================
+const displayList = computed(() => {
+  if (activeTab.value === 'layout') {
+    return sceneList.value.filter(item => item.type === 'layoutScene')
+  }
+  if (activeTab.value === 'time') {
+    return sceneList.value.filter(item => item.type !== 'layoutScene')
+  }
+  return sceneList.value
+})
+
+// =====================================================================
+//  Data Loading
+// =====================================================================
+async function fetchScenes(page) {
+  loading.value = true
+  try {
+    const tag = activeTab.value === 'layout' ? 'all' : activeTab.value
+    const res = await getSceneData(searchQuery.value, page, tag, 'backstage')
+    const data = res.data
+    let list = data.results || []
+    if (activeTab.value === 'layout') {
+      list = list.filter(item => item.type === 'layoutScene')
+    }
+    sceneList.value = list.map(item => ({
+      ...item,
+      status: item.status || { task_id: '', progress: 100 },
+    }))
+    total.value = data.count || 0
+  } catch {
+    ElMessage.error('加载场景列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchOfficialScenes() {
+  try {
+    const res = await getOfficialWebsiteLayout()
+    const data = res.data
+    officialScenes.value = data.data || data.results || []
+  } catch {
+    // silently fail
+  }
+}
+
+// =====================================================================
+//  Search & Tabs & Pagination
+// =====================================================================
+function handleSearch() {
+  currentPage.value = 1
+  fetchScenes(1)
+}
+
+function handleTabChange() {
+  currentPage.value = 1
+  fetchScenes(1)
+}
+
+function handlePageChange(page) {
+  currentPage.value = page
+  fetchScenes(page)
+}
+
+// =====================================================================
+//  Create Scene
+// =====================================================================
+function openCreateDialog() {
+  createDialogVisible.value = true
+}
+
+function handleCreateLayout() {
+  createDialogVisible.value = false
+  router.push('/layout/index')
+}
+
+function handleCreateTime() {
+  createDialogVisible.value = false
+  timeDialogVisible.value = true
+  resetTimeForm()
+}
+
+function resetTimeForm() {
+  timeForm.name = ''
+  timeForm.time_desc = ''
+  timeForm.timer_minutes = 30
+  timeForm.rank_range = ''
+}
+
+async function submitTimeTemplate() {
+  const valid = await timeFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  timeSaving.value = true
+  try {
+    await timetempadd({
+      name: timeForm.name,
+      time_desc: timeForm.time_desc,
+      timer_minutes: timeForm.timer_minutes,
+      rank_range: timeForm.rank_range,
+    })
+    ElMessage.success('计时模板创建成功')
+    timeDialogVisible.value = false
+    fetchScenes(currentPage.value)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.msg || '创建失败')
+  } finally {
+    timeSaving.value = false
+  }
+}
+
+// =====================================================================
+//  Edit / View YAML
+// =====================================================================
+async function handleEdit(item) {
+  try {
+    const res = await layoutList(item.id)
+    const data = res.data?.data || {}
+    router.push(`/layout/index?id=${data.layout_id}`)
+  } catch {
+    ElMessage.error('获取场景详情失败')
+  }
+}
+
+async function handleViewYaml(item) {
+  try {
+    const res = await layoutList(item.id)
+    const data = res.data?.data || {}
+    yamlContent.value = data.yml_content || '# 无 YAML 内容'
+    yamlDialogVisible.value = true
+  } catch {
+    ElMessage.error('获取 YAML 失败')
+  }
+}
+
+// =====================================================================
+//  Delete
+// =====================================================================
+async function handleDelete(item) {
+  try {
+    await ElMessageBox.confirm(`确定删除场景 "${item.name}" 吗？`, '删除确认', {
+      confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning',
+    })
+    if (item.type === 'layoutScene') {
+      await layoutDelete(item.id)
+    } else {
+      await timetempdelete(item.id)
+    }
+    ElMessage.success('删除成功')
+    fetchScenes(currentPage.value)
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(err?.response?.data?.msg || '删除失败')
     }
   }
 }
+
+// =====================================================================
+//  Publish
+// =====================================================================
+async function handlePublish(item) {
+  if (item.is_uesful === false) {
+    try {
+      await ElMessageBox.confirm(
+        '该场景镜像未完全下载，是否先下载镜像？', '提示',
+        { confirmButtonText: '下载镜像', cancelButtonText: '取消', type: 'warning' }
+      )
+      await download_layout_image({ id: item.id })
+      ElMessage.success('镜像下载任务已创建')
+    } catch {
+      return
+    }
+  }
+  try {
+    await layoutRelease(item.id)
+    ElMessage.success('场景已发布')
+    fetchScenes(currentPage.value)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.msg || '发布失败')
+  }
+}
+
+// =====================================================================
+//  Download ZIP
+// =====================================================================
+async function handleDownload(item) {
+  try {
+    const res = await layoutDownload(item.id)
+    const blob = new Blob([res.data], { type: 'application/zip' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${item.name || 'scene'}.zip`
+    a.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('下载已开始')
+  } catch {
+    ElMessage.error('下载失败')
+  }
+}
+
+// =====================================================================
+//  Official Store
+// =====================================================================
+async function downloadOfficial(item) {
+  try {
+    await ElMessageBox.confirm(`确定下载场景 "${item.layout_name}"？`, '确认下载')
+    await downloadWebsiteLayout({ layout_id: item.layout_id })
+    ElMessage.success('下载任务已创建，请稍后刷新页面')
+    fetchScenes(1)
+  } catch {
+    // cancelled
+  }
+}
+
+// =====================================================================
+//  Progress
+// =====================================================================
+function showProgress(item) {
+  const taskId = item.status?.task_id
+  if (!taskId) { ElMessage.info('任务状态已更新，请刷新列表'); return }
+  progressTitle.value = `下载: ${item.name}`
+  progressLayers.value = [{ id: taskId, progress: item.status?.progress || 0 }]
+  progressDialogVisible.value = true
+
+  clearProgressTimer()
+  progressTimer = setInterval(async () => {
+    try {
+      const res = await progressTask(taskId)
+      const data = res.data
+      if (data.progress !== undefined) {
+        progressLayers.value = [{ id: taskId, progress: data.progress }]
+      }
+      if (data.status === 200 || data.progress >= 100) {
+        clearProgressTimer()
+        ElMessage.success('下载完成')
+        progressDialogVisible.value = false
+        fetchScenes(currentPage.value)
+      }
+    } catch {
+      clearProgressTimer()
+    }
+  }, 2000)
+}
+
+function clearProgressTimer() {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
+}
+
+// =====================================================================
+//  Task Polling (auto-refresh download status)
+// =====================================================================
+function startTaskPolling() {
+  taskPollTimer = setInterval(async () => {
+    const taskIds = []
+    const taskMap = {}
+    for (const item of sceneList.value) {
+      if (item.status?.task_id) {
+        taskIds.push(item.status.task_id)
+        taskMap[item.status.task_id] = item
+      }
+    }
+    if (taskIds.length === 0) return
+    try {
+      const res = await layoutbathchTask({ task_ids: taskIds })
+      const statusList = res.data?.data || res.data?.status || []
+      for (const s of statusList) {
+        const scene = taskMap[s.task_id]
+        if (!scene) continue
+        if (s.status === 200) {
+          scene.status.task_id = ''
+          scene.status.progress = 100
+          ElNotification.success({ title: '下载完成', message: `${scene.name} 下载已就绪`, duration: 3000 })
+        } else if (s.status !== 1001) {
+          scene.status.task_id = ''
+        }
+      }
+    } catch { /* ignore */ }
+  }, 3000)
+}
+
+// =====================================================================
+//  Lifecycle
+// =====================================================================
+onMounted(() => {
+  fetchScenes(1)
+  fetchOfficialScenes()
+  startTaskPolling()
+})
+
+onBeforeUnmount(() => {
+  if (taskPollTimer) clearInterval(taskPollTimer)
+  clearProgressTimer()
+})
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+.layout-manager-container {
+  padding: 20px;
 
-.word {
-  z-index: 53;
-  position: absolute;
-  top: 6px;
-  width: 28px;
-  display: block;
-  overflow-wrap: break-word;
-  margin-left: 20px;
-  color: rgba(255, 255, 255, 1);
-  font-size: 14px;
-  white-space: nowrap;
-  line-height: 14px;
+  .search-card {
+    margin-bottom: 16px;
+    border-radius: 8px;
+
+    .search-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+
+      .store-preview {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-left: 8px;
+
+        .store-label {
+          font-size: 13px;
+          color: #606266;
+          white-space: nowrap;
+        }
+
+        .store-link {
+          font-size: 13px;
+          color: #409eff;
+          cursor: pointer;
+          white-space: nowrap;
+
+          &:hover {
+            color: #66b1ff;
+            text-decoration: underline;
+          }
+
+          &::after {
+            content: '·';
+            color: #c0c4cc;
+            margin-left: 6px;
+          }
+
+          &:last-child::after {
+            content: '';
+          }
+        }
+      }
+    }
+  }
+
+  .scene-card {
+    border-radius: 8px;
+  }
+
+  .scene-grid {
+    min-height: 200px;
+  }
+
+  // Add Card
+  .add-card {
+    border-radius: 8px;
+    cursor: pointer;
+    height: 100%;
+    min-height: 220px;
+    transition: all 0.25s;
+    border: 2px dashed #dcdfe6;
+
+    &:hover {
+      border-color: #409eff;
+      background: #ecf5ff;
+    }
+
+    .add-card-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      height: 220px;
+      color: #909399;
+    }
+  }
+
+  // Scene Card
+  .scene-card-item {
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.25s, box-shadow 0.25s;
+
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+
+      .action-overlay {
+        opacity: 1;
+      }
+    }
+
+    .scene-img-wrap {
+      position: relative;
+      height: 200px;
+      overflow: hidden;
+
+      .scene-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .img-placeholder {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f0f2f5;
+        color: #c0c4cc;
+      }
+
+      .unpublished-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(250, 63, 63, 1);
+        color: #fff;
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-weight: 500;
+      }
+
+      .action-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px;
+        opacity: 0;
+        transition: opacity 0.25s;
+        flex-wrap: wrap;
+
+        .el-button {
+          font-size: 12px;
+          padding: 4px 8px;
+        }
+      }
+    }
+
+    .scene-info {
+      padding: 12px 14px 14px;
+
+      .scene-name {
+        margin: 0 0 6px;
+        font-size: 14px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .scene-desc {
+        margin: 0;
+        font-size: 12px;
+        color: #909399;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
+
+  .pagination-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+    padding: 8px 0;
+  }
 }
 
-.main {
-  z-index: 52;
-  width: 70px;
-  height: 24px;
-  margin-top: 20px;
-  border-radius: 12px 0 0 12px;
-  background-color: rgba(250, 63, 63, 1);
-}
-
-.hoveDesc {
-  text-align: left;
+// Store Drawer Cards
+.store-card {
+  border-radius: 8px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  -o-text-overflow: ellipsis;
-  white-space: nowrap;
-  width:auto;
-  display:block;
-  word-break:keep-all;
-  margin-top: 2px;
+  cursor: pointer;
+  transition: transform 0.25s;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  }
+
+  .store-img {
+    width: 100%;
+    height: 180px;
+  }
+
+  .store-card-info {
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
-.word2 {
-  z-index: 33;
-  width: 56px;
-  display: block;
-  overflow-wrap: break-word;
-  color: rgba(96, 98, 102, 1);
-  font-size: 14px;
-  font-family: MicrosoftYaHei;
-  white-space: nowrap;
-  line-height: 14px;
-  margin-top: 32px;
-}
+// Create Options
+.create-options {
+  display: flex;
+  gap: 20px;
+  padding: 12px 0;
 
-.sceneSearch{
-  width: 360px;
-  height: 32px;
-  background: #F2F4F7;
-  border-radius: 4px;
-}
+  .create-option-card {
+    flex: 1;
+    border: 1px solid #e8ecf1;
+    border-radius: 12px;
+    padding: 28px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.25s;
 
+    &:hover {
+      border-color: #409eff;
+      background: #ecf5ff;
+    }
+
+    .el-icon {
+      color: #409eff;
+    }
+
+    .option-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .option-desc {
+      font-size: 12px;
+      color: #909399;
+      text-align: center;
+    }
+  }
+}
 </style>

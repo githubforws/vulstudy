@@ -1,77 +1,54 @@
-import Vue from 'vue'
-import Router from 'vue-router'
-
-Vue.use(Router)
+import { createRouter, createWebHashHistory } from 'vue-router'
 
 /* Layout */
-import Layout from '@/layout'
+import Layout from '@/layout/index.vue'
 
 /**
- * Note: sub-menu only appear when route children.length >= 1
- * Detail see: https://panjiachen.github.io/vue-element-admin-site/guide/essentials/router-and-nav.html
- *
- * hidden: true                   if set true, item will not show in the sidebar(default is false)
- * alwaysShow: true               if set true, will always show the root menu
- *                                if not set alwaysShow, when item has more than one children route,
- *                                it will becomes nested mode, otherwise not show the root menu
- * redirect: noRedirect           if set noRedirect will no redirect in the breadcrumb
- * name:'router-name'             the name is used by <keep-alive> (must set!!!)
- * meta : {
-    roles: ['admin','editor']    control the page roles (you can set multiple roles)
-    title: 'title'               the name show in sidebar and breadcrumb (recommend set)
-    icon: 'svg-name'             the icon show in the sidebar
-    breadcrumb: false            if set false, the item will hidden in breadcrumb(default is true)
-    activeMenu: '/example/list'  if set path, the sidebar will highlight the path you set
-  }
- */
-
-/**
- * constantRoutes
- * a base page that does not have permission requirements
- * all roles can be accessed
+ * constantRoutes - accessible by all roles
  */
 export const constantRoutes = [
   {
     path: '/login',
-    component: () => import('@/views/login/index'),
-    hidden: true
+    component: () => import('@/views/login/index.vue'),
+    hidden: true,
   },
   {
     path: '/register',
-    component: () => import('@/views/register/index'),
-    hidden: false
+    component: () => import('@/views/register/index.vue'),
+    hidden: true,
   },
   {
     path: '/updatepwd',
-    component: () => import('@/views/retrieve/update'),
-    hidden: false
+    component: () => import('@/views/retrieve/update.vue'),
+    hidden: true,
   },
   {
     path: '/activate',
-    component: ()=> import('@/views/retrieve/activate'),
-    hidden:false
+    component: () => import('@/views/retrieve/activate.vue'),
+    hidden: true,
   },
   {
     path: '/retrieve',
-    component: () => import('@/views/retrieve/index'),
-    hidden: false
+    component: () => import('@/views/retrieve/index.vue'),
+    hidden: true,
   },
   {
     path: '/404',
-    component: () => import('@/views/404'),
-    hidden: true
+    component: () => import('@/views/404.vue'),
+    hidden: true,
   },
   {
     path: '/',
     component: Layout,
     redirect: '/dashboard',
-    children: [{
-      path: 'dashboard',
-      affix: true,
-      name: 'Dashboard',
-      component: () => import('@/views/dashboard/index'),
-      meta: { title: '首页', icon: 'dashboard' }
-    }]
+    children: [
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@/views/dashboard/index.vue'),
+        meta: { title: '首页', icon: 'dashboard', affix: true },
+      },
+    ],
   },
   {
     path: '/profile',
@@ -80,211 +57,155 @@ export const constantRoutes = [
     children: [
       {
         path: 'index',
-        component: () => import('@/views/profile/index'),
         name: 'Profile',
-        meta: { title: '用户', icon: 'user', noCache: true }
-      }
-    ]
+        component: () => import('@/views/profile/index.vue'),
+        meta: { title: '用户', icon: 'user' },
+      },
+    ],
   },
   {
     path: '/userrank',
     component: Layout,
-    redirect: '/userrank',
-    children: [{
-      path: 'list',
-      affix: true,
-      name: 'list',
-      component: () => import('@/views/rank/index'),
-      meta: { title: '积分总榜', icon: 'form' }
-    }]
-  },
-  {
-    path: '/time',
-    component: Layout,
-    redirect: '/time',
-    children: [{
-      path: 'time',
-      affix: true,
-      name: 'list',
-      hidden: true,
-      component: () => import('@/views/time/index'),
-      meta: { title: '场景模式', icon: 'form' }
-    }]
-  },
-  {
-    path: '/compose',
-    component: Layout,
-    redirect: '/',
-    children: [{
-      path: '/scene/list',
-      name: 'List',
-      component: () => import('@/views/scene/list'),
-      meta: { title: '场景', icon: 'table', noCache: true }
-    }]
+    redirect: '/userrank/list',
+    children: [
+      {
+        path: 'list',
+        name: 'UserRank',
+        component: () => import('@/views/rank/index.vue'),
+        meta: { title: '积分总榜', icon: 'form' },
+      },
+    ],
   },
   {
     path: '/scene',
     component: Layout,
-    redirect: '/',
-    meta: {title: "场景模式", icon: 'form'},
-    hidden: true,
+    redirect: '/scene/list',
     children: [
       {
-        path: '/scene/index',
-        component: () => import('@/views/scene/index'),
-        name: 'Index',
+        path: 'list',
+        name: 'Scene',
+        component: () => import('@/views/scene/list.vue'),
+        meta: { title: '场景', icon: 'table' },
+      },
+      {
+        path: 'index/:id',
+        name: 'SceneDetail',
+        component: () => import('@/views/scene/index.vue'),
         hidden: true,
-        meta: { title: '场景', icon: 'table', noCache: true }
-      },]
-    },
-    {
-    path: '/timelist',
+        meta: { title: '场景详情' },
+      },
+      {
+        path: 'timeindex/:id',
+        name: 'TimeSceneDetail',
+        component: () => import('@/views/scene/timeindex.vue'),
+        hidden: true,
+        meta: { title: '计时场景' },
+      },
+    ],
+  },
+  {
+    path: '/notices',
     component: Layout,
-    redirect: '/',
-    meta: {title: "场景模式", icon: 'form'},
-    hidden: true,
-    children: [
-      {
-        path: '/timelist/index',
-        component: () => import('@/views/scene/timeindex'),
-        name: 'TimeIndex',
-        hidden: true,
-        meta: { title: '计时场景', icon: 'table', noCache: true }
-      },]
-    },
-   {
-    path:'/notices',
-    component:Layout,
-    redirect:'/notices/all',
+    redirect: '/notices/all',
     children: [
       {
         path: 'all',
-        component: () => import('@/views/notice/notices'),
         name: 'Notice',
-        meta: { title: '公告列表', icon: 'notice', noCache: true }
-      }
-    ]
+        component: () => import('@/views/notice/notices.vue'),
+        meta: { title: '公告列表', icon: 'notice' },
+      },
+    ],
   },
 ]
 
-const createRouter = () => new Router({
-  // mode: 'history', // require service support
-  scrollBehavior: () => ({ y: 0 }),
-  routes: constantRoutes
-})
+const createRouterFn = () =>
+  createRouter({
+    history: createWebHashHistory(),
+    scrollBehavior: () => ({ top: 0 }),
+    routes: constantRoutes,
+  })
 
-const router = createRouter()
+const router = createRouterFn()
 
-// Detail see: https://github.com/vuejs/vue-router/issues/1234#issuecomment-357941465
 export function resetRouter() {
-  const newRouter = createRouter()
-  router.matcher = newRouter.matcher // reset router
+  const newRouter = createRouterFn()
+  router.matcher = newRouter.matcher
 }
 
 export const asyncRoutes = [
   {
-    // 镜像管理
     path: '/image',
     component: Layout,
-    redirect: '/image',
-    meta: {role: ['admin'],title: "镜像管理", icon: 'docker'},
-    children: [{
-      path: 'image',
-      affix: true,
-      name: 'image',
-      component: () => import('@/views/image/index'),
-      meta: { title: '镜像管理', icon: 'docker' , role: ['admin']}
-    },
-    // {
-    //  path: 'compose',
-    //  component: () => import('@/views/image/dockerCompose'),
-    //  name: 'compose',
-    //  affix: true,
-    //  meta: {'title': 'Custom-Docker', icon: 'docker', role: ['admin'] },
-    //  },
-    {
-      path: 'images',
-      affix: true,
-      name: 'images',
-      component: () => import("@/views/manager/images"),
-      meta: { title: '靶场管理', icon: 'bug' , role: ['admin']}
+    redirect: '/image/image',
+    meta: { role: ['admin'], title: '镜像管理', icon: 'docker' },
+    children: [
+      {
+        path: 'image',
+        name: 'ImageManage',
+        component: () => import('@/views/image/index.vue'),
+        meta: { title: '镜像管理', icon: 'docker', role: ['admin'] },
       },
-    ]
+      {
+        path: 'images',
+        name: 'TargetManage',
+        component: () => import('@/views/manager/images.vue'),
+        meta: { title: '靶场管理', icon: 'bug', role: ['admin'] },
+      },
+    ],
   },
   {
-    // 环境编排管理
     path: '/layout',
     component: Layout,
-    redirect: '/layout',
-    meta: {role: ['admin'], title: "场景管理", icon: "barrage_fill"},
-    children: [{
-      path: 'network',
-      affix: true,
-      name: 'network',
-      component: () => import('@/views/network/index'),
-      meta: { title: '网卡管理', icon: 'tree' , role: ['admin']}
-    },{
-      path: 'manager',
-      affix: true,
-      name: 'manager',
-      component: () => import('@/views/layout/manager'),
-      meta: { title: '环境编排管理', icon: 'barrage_fill' , role: ['admin']}
-    },
+    redirect: '/layout/network',
+    meta: { role: ['admin'], title: '场景管理', icon: 'barrage_fill' },
+    children: [
       {
-      path: 'index',
-      affix: true,
-      name: 'index',
-      hidden: true,
-      component: () => import('@/views/layout/index'),
-      meta: { title: '创建', icon: 'barrage_fill' , role: ['admin']}
-    },
-    {
-        path: 'timetemp',
-        affix: true,
-        name: 'timetemp',
-        hidden: true,
-        component: () => import("@/views/manager/timetemp"),
-        meta: { title: '计时模版管理', icon: 'setting' , role: ['admin']}
-    },
-    ]
+        path: 'network',
+        name: 'NetworkManage',
+        component: () => import('@/views/network/index.vue'),
+        meta: { title: '网卡管理', icon: 'tree', role: ['admin'] },
+      },
+      {
+        path: 'manager',
+        name: 'LayoutManage',
+        component: () => import('@/views/layout/manager.vue'),
+        meta: { title: '环境编排管理', icon: 'barrage_fill', role: ['admin'] },
+      },
+    ],
   },
   {
-    // 账户管理
     path: '/manager',
     component: Layout,
-    redirect: '/manager',
-    meta: {role: ['admin'],title: "系统管理", icon: 'setting'},
+    redirect: '/manager/user',
+    meta: { role: ['admin'], title: '系统管理', icon: 'setting' },
     children: [
       {
         path: 'user',
-        affix: true,
-        name: 'user',
-        component: () => import("@/views/manager/user"),
-        meta: { title: '用户管理', icon: 'user' , role: ['admin']}
+        name: 'UserManage',
+        component: () => import('@/views/manager/user.vue'),
+        meta: { title: '用户管理', icon: 'user', role: ['admin'] },
       },
       {
         path: 'log',
-        affix: true,
-        name: 'log',
-        component: () => import("@/views/manager/log"),
-        meta: { title: '日志管理', icon: 'log' , role: ['admin']}
+        name: 'LogManage',
+        component: () => import('@/views/manager/log.vue'),
+        meta: { title: '日志管理', icon: 'log', role: ['admin'] },
       },
       {
         path: 'setting',
-        component: () => import('@/views/manager/setting'),
-        name: 'setting',
-        meta: { title: '系统配置', icon: 'setting', noCache: true }
+        name: 'SystemSetting',
+        component: () => import('@/views/manager/setting.vue'),
+        meta: { title: '系统配置', icon: 'setting', role: ['admin'] },
       },
       {
-        path:'notice',
-        component: () => import('@/views/notice/notice_index'),
-        name: 'notice',
-        meta: {title: '公告管理', icon:'log',role: ['admin']}
-      }
-    ]
+        path: 'notice',
+        name: 'NoticeManage',
+        component: () => import('@/views/notice/notice_index.vue'),
+        meta: { title: '公告管理', icon: 'notice', role: ['admin'] },
+      },
+    ],
   },
-  { path: '*', redirect: '/404', hidden: true }
+  { path: '/:pathMatch(.*)*', redirect: '/404', hidden: true },
 ]
-
 
 export default router

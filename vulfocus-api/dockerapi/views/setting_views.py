@@ -33,7 +33,7 @@ def get_writeup_info(request):
 def get_setting(request):
     user = request.user
     if not user.is_superuser:
-        return JsonResponse(R.build(msg="权限不足"))
+        return JsonResponse(R.build(msg="权限不足"), status=403)
     
     rsp_data = get_setting_config()
     return JsonResponse(R.ok(data=rsp_data))
@@ -51,25 +51,24 @@ def get_version(request):
 def update_setting(request):
     user = request.user
     if not user.is_superuser:
-        return JsonResponse(R.build(msg="权限不足"))
-    
+        return JsonResponse(R.build(msg="权限不足"), status=403)
+
     username = request.POST.get("username")
     if not username:
-        return JsonResponse(R.build(msg="用户名不能为空"))
-    
+        return JsonResponse(R.build(msg="用户名不能为空"), status=400)
+
     pwd = request.POST.get("pwd", DEFAULT_CONFIG["pwd"])
     if not pwd:
-        return JsonResponse(R.build(msg="密码不能为空"))
-    
+        return JsonResponse(R.build(msg="密码不能为空"), status=400)
+
     time = request.POST.get("time")
     share_username = request.POST.get("share_username")
-    
+
     if not share_username:
-        return JsonResponse(R.build(msg="分享用户名不能为空"))
+        share_username = DEFAULT_CONFIG.get("share_username", "")
     else:
-        share_username_reg = "[\da-zA-z\-]+"
-        if not re.match(share_username_reg, share_username):
-            return JsonResponse(R.build(msg="分享用户名不符合要求"))
+        if not re.match(r"[\da-zA-Z\-]+", share_username):
+            return JsonResponse(R.build(msg="分享用户名不符合要求"), status=400)
     
     is_synchronization = request.POST.get("is_synchronization")
     cancel_validation = request.POST.get("cancel_validation")
@@ -129,7 +128,7 @@ def get_timing_imgs(request):
 def update_enterprise_setting(request):
     user = request.user
     if not user.is_superuser:
-        return JsonResponse(R.build(msg="权限不足"))
+        return JsonResponse(R.build(msg="权限不足"), status=403)
     
     url_name = request.POST.get("url_name")
     enterprise_bg = request.POST.get("enterprise_bg", "")
@@ -154,7 +153,7 @@ def update_enterprise_setting(request):
                         config.config_value = str(config_value)
                         config.save()
     except:
-        return JsonResponse(R.build('修改失败'))
+        return JsonResponse(R.build('修改失败'), status=400)
     
     rsp_data = get_setting_config()
     return JsonResponse(R.ok(msg="修改成功", data=rsp_data))

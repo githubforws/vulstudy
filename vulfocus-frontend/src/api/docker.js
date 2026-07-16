@@ -98,38 +98,42 @@ export function ContainerStart(id) {
   })
 }
 
-export function ImgDashboard(data,flag,page,temp,type,rank,activate_name) {
-  if(data === undefined){
-    data = ""
+export function ImgDashboard(data, flag, page, temp, type, rank, activate_name, tagFilters) {
+  if (data === undefined) { data = '' }
+  if (rank === undefined || rank == null) { rank = 0.0 }
+  if (type === undefined || type == null) { type = '' }
+  if (page === undefined || page == null) { page = 1 }
+  if (activate_name === undefined || activate_name === null) { activate_name = 'all' }
+
+  let url = '/img/dashboard/?query=' + data + '&page=' + page + '&rank=' + rank + '&type=' + type + '&activate_name=' + activate_name
+
+  // Add separate category filter params for combined filtering
+  if (tagFilters) {
+    if (tagFilters.holeType && tagFilters.holeType.length > 0) {
+      url += '&holeType=' + encodeURIComponent(tagFilters.holeType.join(','))
+    }
+    if (tagFilters.devLanguage && tagFilters.devLanguage.length > 0) {
+      url += '&devLanguage=' + encodeURIComponent(tagFilters.devLanguage.join(','))
+    }
+    if (tagFilters.devDatabase && tagFilters.devDatabase.length > 0) {
+      url += '&devDatabase=' + encodeURIComponent(tagFilters.devDatabase.join(','))
+    }
+    if (tagFilters.devClassify && tagFilters.devClassify.length > 0) {
+      url += '&devClassify=' + encodeURIComponent(tagFilters.devClassify.join(','))
+    }
   }
-  if(rank === undefined || rank == null){
-    rank = 0.0
+
+  let paramFlag = ''
+  if (flag === true) {
+    paramFlag = 'flag'
+    url += '&flag=' + paramFlag
   }
-  if(type === undefined || type == null){
-    type = ""
+  let tempFlag = ''
+  if (temp === true) {
+    tempFlag = 'temp'
+    url += '&temp=' + tempFlag
   }
-  if(page === undefined || page == null){
-    page =1
-  }
-  // activate_name表示tab标签，默认是all,还可以选择是已启动，表示返回已启动镜像
-  if(activate_name === undefined || activate_name === null){
-    activate_name = "all"
-  }
-  let url = "/img/dashboard/?query="+data+"&page="+page+'&rank='+rank+'&type='+type+'&activate_name='+activate_name
-  let paramFlag = ""
-  if(flag === true){
-    paramFlag = "flag"
-    url += "&flag="+paramFlag
-  }
-  let tempFlag =""
-  if(temp === true){
-    tempFlag = "temp"
-    url += "&temp="+tempFlag
-  }
-  return request({
-    url: url,
-    method: 'get'
-  })
+  return request({ url, method: 'get' })
 }
 
 export function getWriteup(id) {

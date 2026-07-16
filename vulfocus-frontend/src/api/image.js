@@ -54,7 +54,7 @@ export function ImageDelete(id) {
  */
 export function ImageLocal() {
   return request({
-    url: '/images/local/local/'
+    url: '/images/local/'
   })
 }
 
@@ -65,7 +65,7 @@ export function ImageLocal() {
  */
 export function ImageLocalAdd(data) {
   return request({
-    url: '/images/local/local_add/',
+    url: '/images/local_add/',
     method: 'post',
     data
   })

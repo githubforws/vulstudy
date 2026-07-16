@@ -1,66 +1,48 @@
 <template>
-  <div class="app-container">
-    <div v-if="user">
-      <el-row :gutter="20">
-        <el-col :span="6" :xs="24">
-          <user-card :user="user" />
-        </el-col>
-        <el-col :span="18" :xs="24">
-          <el-card>
-            <el-tabs v-model="activeTab">
-              <el-tab-pane label="Timeline" name="timeline">
-                <timeline />
-              </el-tab-pane>
-              <el-tab-pane label="Account" name="account">
-                <account :user="user" />
-              </el-tab-pane>
-            </el-tabs>
-          </el-card>
-        </el-col>
-      </el-row>
-    </div>
+  <div class="profile-container app-container">
+    <el-row :gutter="24">
+      <!-- Left: UserCard (6 cols) -->
+      <el-col :xs="24" :sm="24" :md="8" :lg="6" :xl="6">
+        <UserCard />
+      </el-col>
+
+      <!-- Right: Tabs (18 cols) -->
+      <el-col :xs="24" :sm="24" :md="16" :lg="18" :xl="18">
+        <el-card shadow="never" class="profile-tabs-card">
+          <el-tabs v-model="activeTab">
+            <el-tab-pane label="活动时间线" name="timeline">
+              <Timeline />
+            </el-tab-pane>
+            <el-tab-pane label="账户管理" name="account">
+              <Account />
+            </el-tab-pane>
+          </el-tabs>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
-<script>
-import { mapGetters } from 'vuex'
-import UserCard from './components/UserCard'
-import Timeline from './components/Timeline'
-import Account from './components/Account'
+<script setup>
+import { ref } from 'vue'
+import UserCard from './components/UserCard.vue'
+import Timeline from './components/Timeline.vue'
+import Account from './components/Account.vue'
 
-export default {
-  name: 'Profile',
-  components: { UserCard, Timeline, Account },
-  data() {
-    return {
-      user: {},
-      activeTab: 'timeline'
-    }
-  },
-  computed: {
-    ...mapGetters([
-      'name',
-      'avatar',
-      'roles',
-      'rank',
-      'email',
-      'licence'
-    ])
-  },
-  created() {
-    this.getUser()
-  },
-  methods: {
-    getUser() {
-      this.user = {
-        name: this.name,
-        // role: this.roles.join(' | '),
-        email: this.email,
-        avatar: this.avatar,
-        rank:this.rank,
-        licence:this.licence
-      }
+const activeTab = ref('timeline')
+</script>
+
+<style lang="scss" scoped>
+.profile-container {
+  padding: 24px;
+
+  .profile-tabs-card {
+    border-radius: 8px;
+    min-height: 400px;
+
+    :deep(.el-tabs__header) {
+      margin-bottom: 20px;
     }
   }
 }
-</script>
+</style>

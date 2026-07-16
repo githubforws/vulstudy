@@ -129,6 +129,11 @@ class UserRegView(viewsets.mixins.CreateModelMixin, viewsets.GenericViewSet):
     serializer_class = UserRegisterSerializer
 
     def create(self, request, *args, **kwargs):
+        # Check system config: if registration is disabled, reject
+        setting_config = get_setting_config()
+        if setting_config.get('cancel_registration') is True:
+            return JsonResponse({"code": 400, "msg": "系统已关闭注册功能"})
+
         username = request.data.get("username", "")
         password = request.data.get("password", "")
         checkpass = request.data.get("checkpass", "")
@@ -138,16 +143,20 @@ class UserRegView(viewsets.mixins.CreateModelMixin, viewsets.GenericViewSet):
             return JsonResponse({"code": 400, "msg": "用户名不能为空"})
         if UserProfile.objects.filter(username=username).count():
             return JsonResponse({"code": 400, "msg": "该用户已被注册"})
-        if not captcha_code:
-            return JsonResponse({"code": 400, "msg": "验证码不能为空"})
-        if not judge_captcha(captcha_code, hashkey):
-            return JsonResponse({"code": 400, "msg": "验证码错误"})
+
+        # cancel_validation=true means skip captcha validation
+        if not setting_config.get('cancel_validation'):
+            if not captcha_code:
+                return JsonResponse({"code": 400, "msg": "验证码不能为空"})
+            if not judge_captcha(captcha_code, hashkey):
+                return JsonResponse({"code": 400, "msg": "验证码错误"})
+
         if password != checkpass:
             return JsonResponse({"code": 400, "msg": "两次密码输入不一致"})
         user = UserProfile(username=username)
         user.set_password(password)
         user.has_active = True
-        user.greenhand = True
+        user.greenhand = False
         user.save()
         return JsonResponse({"code": 200, "msg": "注册成功"})
 

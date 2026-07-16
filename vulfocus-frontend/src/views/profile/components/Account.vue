@@ -1,139 +1,196 @@
 <template>
-  <el-form :rules="rules" :model="ruleForm" ref="ruleForm" >
-    <el-form-item label="用户名">
-      <el-input v-model.trim="user.name" :disabled="true" />
-    </el-form-item>
-    <el-form-item label="邮箱">
-      <el-input v-model.trim="user.email" :disabled="true" />
-    </el-form-item>
-    <el-form-item label="Licence">
-      <el-input v-model.trim="user.licence" class="copy-code-button" :disabled="true">
-        <el-button slot="append" icon="el-icon-document-copy" class="copy-code-button" :data-clipboard-text="user.licence" @click="copy">
-        </el-button>
-      </el-input>
-    </el-form-item>
-    <el-form-item label="旧密码" v-if="updatePwd === true">
-      <el-input v-model.trim="ruleForm.oldPassword" />
-    </el-form-item>
-    <el-form-item label="新密码" v-if="updatePwd === true" prop="pass">
-      <el-input type="password" v-model.trim="ruleForm.pass" />
-    </el-form-item>
-    <el-form-item label="确认新密码" v-if="updatePwd === true" prop="checkPass">
-      <el-input type="password" v-model.trim="ruleForm.checkPass" />
-    </el-form-item>
-    <el-form-item>
-      <el-button type="primary" @click="handleUpdatePwd" v-if="updatePwd === true">修改</el-button>
-      <el-button type="primary" @click="handlerPwd" v-if="updatePwd === false">修改密码</el-button>
-      <el-button type="primary" @click="closeHandlerPwd" v-if="updatePwd === true">关闭</el-button>
-    </el-form-item>
-  </el-form>
+  <div class="account-container">
+    <!-- User Info (read-only) -->
+    <el-form label-width="120px" class="info-form">
+      <el-form-item label="用户名">
+        <el-input :model-value="userStore.name" disabled />
+      </el-form-item>
+      <el-form-item label="邮箱">
+        <el-input :model-value="userStore.email" disabled />
+      </el-form-item>
+      <el-form-item label="Licence">
+        <div class="licence-field">
+          <el-input :model-value="userStore.licence" disabled class="licence-input" />
+          <el-button type="primary" :icon="CopyDocument" @click="copyLicence">复制</el-button>
+        </div>
+      </el-form-item>
+    </el-form>
+
+    <el-divider />
+
+    <!-- Change Password -->
+    <div class="password-section">
+      <el-button
+        v-if="!showPasswordForm"
+        type="warning"
+        plain
+        :icon="Edit"
+        @click="showPasswordForm = true"
+      >修改密码</el-button>
+
+      <transition name="el-zoom-in-top">
+        <el-form
+          v-if="showPasswordForm"
+          ref="formRef"
+          :model="pwdForm"
+          :rules="pwdRules"
+          label-width="120px"
+          class="password-form"
+          @submit.prevent="submitPassword"
+        >
+          <el-form-item label="旧密码" prop="oldPassword">
+            <el-input
+              v-model="pwdForm.oldPassword"
+              type="password"
+              show-password
+              placeholder="请输入旧密码"
+            />
+          </el-form-item>
+          <el-form-item label="新密码" prop="pass">
+            <el-input
+              v-model="pwdForm.pass"
+              type="password"
+              show-password
+              placeholder="至少8位字符"
+            />
+          </el-form-item>
+          <el-form-item label="确认新密码" prop="checkPass">
+            <el-input
+              v-model="pwdForm.checkPass"
+              type="password"
+              show-password
+              placeholder="请再次输入新密码"
+            />
+          </el-form-item>
+          <el-form-item>
+            <div class="form-actions">
+              <el-button type="primary" :loading="submitting" @click="submitPassword">修改</el-button>
+              <el-button @click="cancelPassword">关闭</el-button>
+            </div>
+          </el-form-item>
+        </el-form>
+      </transition>
+    </div>
+  </div>
 </template>
 
-<script>
-import { updatePassword } from "@/api/user"
-import Clipboard from 'clipboard'
+<script setup>
+import { ref, reactive } from 'vue'
+import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import { updatePassword } from '@/api/user'
+import { CopyDocument, Edit } from '@element-plus/icons-vue'
 
-export default {
-  data(){
-    const validatePass = (rule, value, callback) => {
-        if (value === '') {
-          callback(new Error('请输入密码'));
-        } else {
-          if (this.ruleForm.pass.length<8){
-            callback(new Error('密码不能少于8位'));
-          }
-          if (this.ruleForm.checkPass !== '') {
-            this.$refs.ruleForm.validateField('checkPass');
-          }
-          callback();
-        }
-      };
-    const validatePass2 = (rule, value, callback) => {
-      if (value === '') {
-        callback(new Error('请再次输入密码'));
-      } else if (value !== this.ruleForm.pass) {
-        callback(new Error('两次输入密码不一致!'));
-      } else {
-        callback();
-      }
-    };
-    return{
-      ruleForm:{
-        name: '',
-        email: '',
-        oldPassword:"",
-        pass:"",
-        checkPass:""
-      },
-      updatePwd:false,
-      rules: {
-        pass: [
-          { validator: validatePass, trigger: 'blur' }
-        ],
-        checkPass: [
-          { validator: validatePass2, trigger: 'blur' }
-        ],
-      },
-    }
-  },
-  props: {
-    user: {
-      type: Object,
-      default: () => {
-        return {
-          name: '',
-          email: '',
-        }
-      }
-    }
-  },
-  methods: {
-    handlerPwd(){
-      this.updatePwd = true
-    },
-    closeHandlerPwd(){
-      this.updatePwd = false
-    },
-    copy () {
-      let clipboard = new Clipboard('.copy-code-button') // 这里可以理解为选择器，选择上面的复制按钮
-        clipboard.on('success', e => {
-            clipboard.destroy()
-            this.$message({
-              message: '复制成功',
-              type: "success",
-            })
-        })
-        clipboard.on('error', e => {
-          clipboard.destroy()
-          this.$message({
-            message: '复制失败',
-            type: "error",
-        })
+const userStore = useUserStore()
+
+// ── Password Form ──
+const showPasswordForm = ref(false)
+const submitting = ref(false)
+const formRef = ref(null)
+
+const pwdForm = reactive({
+  oldPassword: '',
+  pass: '',
+  checkPass: '',
+})
+
+const validateCheckPass = (_rule, value, callback) => {
+  if (!value) {
+    callback(new Error('请确认新密码'))
+  } else if (value !== pwdForm.pass) {
+    callback(new Error('两次输入的密码不一致'))
+  } else {
+    callback()
+  }
+}
+
+const pwdRules = {
+  oldPassword: [{ required: true, message: '请输入旧密码', trigger: 'blur' }],
+  pass: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 8, message: '密码至少8位字符', trigger: 'blur' },
+  ],
+  checkPass: [
+    { required: true, message: '请确认新密码', trigger: 'blur' },
+    { validator: validateCheckPass, trigger: 'blur' },
+  ],
+}
+
+function submitPassword() {
+  formRef.value.validate(valid => {
+    if (!valid) return
+    submitting.value = true
+    updatePassword({
+      old_password: pwdForm.oldPassword,
+      new_password: pwdForm.pass,
+    })
+      .then(() => {
+        ElMessage.success('密码修改成功')
+        showPasswordForm.value = false
+        resetPasswordForm()
       })
-    },
-    handleUpdatePwd(){
-      this.$refs.ruleForm.validate(valid => {
-        if(valid){
-          updatePassword(this.ruleForm).then(response=>{
-            let data = response.data
-            if (data.code === 200){
-              this.$message({
-              message: '修改密码成功',
-              type: "success",
-              })
-              this.updatePwd = false
-            }else{
-              this.$message({
-              message: data.msg,
-              type: "error",
-              })
-            }
-          })
-        }else {
-          return false
-        }
+      .catch(err => {
+        const msg = err?.response?.data?.msg || err?.response?.data?.non_field_errors?.[0] || '密码修改失败'
+        ElMessage.error(msg)
       })
-    },
+      .finally(() => {
+        submitting.value = false
+      })
+  })
+}
+
+function cancelPassword() {
+  showPasswordForm.value = false
+  resetPasswordForm()
+}
+
+function resetPasswordForm() {
+  pwdForm.oldPassword = ''
+  pwdForm.pass = ''
+  pwdForm.checkPass = ''
+}
+
+// ── Licence ──
+function copyLicence() {
+  if (userStore.licence) {
+    navigator.clipboard.writeText(userStore.licence).then(() => {
+      ElMessage.success('Licence 已复制到剪贴板')
+    })
   }
 }
 </script>
+
+<style lang="scss" scoped>
+.account-container {
+  padding: 4px 0;
+
+  .info-form {
+    max-width: 560px;
+
+    .licence-field {
+      display: flex;
+      width: 100%;
+      gap: 8px;
+
+      .licence-input {
+        flex: 1;
+      }
+    }
+  }
+
+  .password-section {
+    .password-form {
+      max-width: 480px;
+      margin-top: 16px;
+      padding: 16px;
+      background: #fafafa;
+      border-radius: 8px;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+    }
+  }
+}
+</style>

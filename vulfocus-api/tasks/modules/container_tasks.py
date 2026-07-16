@@ -4,6 +4,7 @@ import json
 import time
 import random
 import socket
+import uuid
 
 from vulfocus.settings import client, api_docker_client, DOCKER_CONTAINER_TIME, VUL_IP, REDIS_POOL
 from dockerapi.models import ContainerVul, ImageInfo, SysLog
@@ -93,6 +94,20 @@ def run_container(container_id, user_id, task_id, countdown):
         image_name = image_info.image_name
         image_port = image_info.image_port
 
+        # Auto-detect ports from Docker image if not configured in DB
+        if not image_port:
+            try:
+                docker_img = client.images.get(image_name)
+                exposed_ports = docker_img.attrs.get('Config', {}).get('ExposedPorts', {})
+                if exposed_ports:
+                    port_list = [p.split('/')[0] for p in exposed_ports.keys()]
+                    image_port = json.dumps(port_list)
+                    image_info.image_port = image_port
+                    image_info.save()
+            except Exception:
+                pass
+
+        container = None
         try:
             container = client.containers.get(container_vul.docker_container_id)
             container.start()
@@ -118,33 +133,55 @@ def run_container(container_id, user_id, task_id, countdown):
             )
 
             container_vul.docker_container_id = container.id
-            container_vul.container_port = str(container.attrs.get('Config', {}).get('ExposedPorts', {}))
-            container_vul.vul_port = str(container.attrs.get('NetworkSettings', {}).get('Ports', {}))
-
-            if VUL_IP:
-                host_ip = VUL_IP
-            else:
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(('8.8.8.8', 80))
-                    host_ip = s.getsockname()[0]
-                finally:
-                    s.close()
-
-            container_vul.vul_host = host_ip
             container_vul.container_status = "running"
+            container_vul.save()
 
-            flag = str(uuid.uuid4()).replace("-", "")[:16]
-            container_vul.container_flag = flag
+        # ── Common path: update host/port/flag after container is running ──
+        if container:
+            container.reload()
+            container_vul.docker_container_id = container.id
+            container_vul.container_port = json.dumps(container.attrs.get('Config', {}).get('ExposedPorts', {}))
+            container_vul.vul_port = json.dumps(container.attrs.get('NetworkSettings', {}).get('Ports', {}))
 
+            if not container_vul.vul_host:
+                if VUL_IP:
+                    host_ip = VUL_IP
+                else:
+                    host_ip = '127.0.0.1'
+                    try:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s.connect(('8.8.8.8', 80))
+                        host_ip = s.getsockname()[0]
+                    except Exception:
+                        pass
+                    finally:
+                        s.close()
+                container_vul.vul_host = host_ip
+
+            container_vul.container_status = "running"
+            if not container_vul.container_flag:
+                container_vul.container_flag = str(uuid.uuid4()).replace("-", "")[:16]
             container_vul.save()
 
         start_date = int(time.time())
         end_date = start_date + countdown
 
+        try:
+            vul_port_parsed = json.loads(container_vul.vul_port) if container_vul.vul_port else {}
+        except Exception:
+            vul_port_parsed = {}
+
         task_info = TaskInfo.objects.filter(task_id=task_id).first()
         if task_info:
-            task_info.task_msg = json.dumps(R.ok(data={"start_date": start_date, "end_date": end_date}))
+            task_info.task_msg = json.dumps(R.ok(data={
+                "id": container_vul.docker_container_id or '',
+                "host": container_vul.vul_host or '',
+                "port": vul_port_parsed,
+                "_now": int(timezone.now().timestamp()),
+                "start_date": start_date,
+                "end_date": end_date,
+                "status": "running",
+            }))
             task_info.task_status = 3
             task_info.update_date = timezone.now()
             task_info.save()

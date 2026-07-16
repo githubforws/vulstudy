@@ -1,384 +1,299 @@
 <template>
-<div class="app-container">
-  <el-input v-model="search" class="sceneSearch" size="medium" placeholder="请输入关键字进行搜索" @keyup.enter.native="handleQuery">
-    <i slot="prefix" class="el-input__icon el-icon-search"></i>
-  </el-input>
-  <el-tabs v-model="activeName" style="margin-top: 10px" @tab-click="currentTabs">
-    <el-tab-pane label="全部" name="all">
-      <div class="filter-container">
-        <el-row :gutter="23">
-          <el-col :span="6" v-for="(item,index) in sceneTableData" :key="index" style="padding-bottom: 18px;">
-            <el-card :body-style="{ padding: '0px'}">
-              <div style="position: relative">
-                <div class="main" style=" position: absolute">
-                  <span class="word" v-if="item.type === 'layoutScene'">普通场景</span>
-                  <span class="word" v-else-if="item.type === 'timeScene'">盲盒模式</span>
-                </div>
-                <img v-if="item.image_name !==imgpath" @click="handleInto(item)" :src="item.image_name"  alt="" width="100%" height="300px"/>
-                <img v-else-if="item.image_name===imgpath" @click="handleInto(item)" :src="modelimg"  alt="" width="100%" height="300px" />
-                <div class="container-title" style="margin-top: 5px;">
-                  <span style="color:#303133;margin-left: 5px;font-size: 14px;">{{item.name}}</span>
-                </div>
-                <div class="bottom clearfix" style="margin-top: 10px;height: 60px;">
-                  <span style="color:#999;font-size: 14px;margin-left: 5px;" class="hoveDesc"> {{ item.desc }}</span>
-                </div>
-                <div class="bottom-img" style="margin-top: 5px;width: 100%;height: 20px;margin-bottom: 10px">
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-if="item.have_fav === true"><svg-icon icon-class="fav_active" style="margin-right: 10px" @click="thumbup(item)"/>{{item.fav_num}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-else-if="item.have_fav === false"><svg-icon icon-class="fav_not_active" style="margin-right: 10px" @click="thumbup(item)"/>{{item.fav_num}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px"><svg-icon icon-class="has_read" style="margin-right: 10px"/>{{item.total_view}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-if="item.type === 'layoutScene'"><svg-icon icon-class="download" style="margin-right: 10px"/>{{item.download_num}}</span>
+  <div class="scene-list-container app-container">
+    <el-card shadow="never" class="scene-list-card">
+      <!-- Search Bar -->
+      <div class="scene-search">
+        <el-input
+          v-model="searchQuery"
+          placeholder="按场景名称搜索"
+          style="width: 280px"
+          clearable
+          size="default"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button type="primary" @click="handleSearch">搜索</el-button>
+      </div>
+
+      <!-- Tabs -->
+      <el-tabs v-model="activeTag" @tab-change="handleTagChange" class="scene-tabs">
+        <el-tab-pane label="全部" name="all" />
+        <el-tab-pane label="热门" name="hot" />
+        <el-tab-pane label="计时场景" name="time" />
+      </el-tabs>
+
+      <!-- Card Grid -->
+      <div v-loading="loading" class="scene-grid">
+        <el-row :gutter="[20, 20]" v-if="!loading && sceneList.length > 0">
+          <el-col
+            v-for="item in sceneList"
+            :key="item.id"
+            :xs="24"
+            :sm="12"
+            :md="8"
+            :lg="6"
+            :xl="6"
+          >
+            <el-card shadow="hover" :body-style="{ padding: '0' }" class="scene-card">
+              <!-- Scene Image -->
+              <div class="scene-img-wrap" @click="goToDetail(item)">
+                <el-image
+                  :src="item.image_name || '/logo.svg'"
+                  fit="cover"
+                  class="scene-img"
+                >
+                  <template #error>
+                    <div class="img-placeholder">
+                      <el-icon :size="32"><Picture /></el-icon>
+                    </div>
+                  </template>
+                </el-image>
+                <el-tag
+                  :type="item.type === 'timeScene' ? 'warning' : 'primary'"
+                  size="small"
+                  class="scene-type-tag"
+                  effect="dark"
+                >
+                  {{ item.type === 'timeScene' ? '计时场景' : '普通场景' }}
+                </el-tag>
+              </div>
+
+              <!-- Card Body -->
+              <div class="scene-card-body">
+                <h3 class="scene-name" @click="goToDetail(item)">{{ item.name }}</h3>
+                <p class="scene-desc">{{ item.desc }}</p>
+
+                <!-- Stats Row -->
+                <div class="scene-stats">
+                  <span class="stat-item" title="收藏数">
+                    <el-icon
+                      :color="item.have_fav ? '#e6a23c' : '#909399'"
+                      style="cursor: pointer;"
+                      @click.stop="toggleFav(item)"
+                    >
+                      <StarFilled v-if="item.have_fav" />
+                      <Star v-else />
+                    </el-icon>
+                    {{ item.fav_num || 0 }}
+                  </span>
+                  <span class="stat-item" title="浏览数">
+                    <el-icon><View /></el-icon>
+                    {{ item.total_view || 0 }}
+                  </span>
+                  <span v-if="item.type !== 'timeScene'" class="stat-item" title="下载数">
+                    <el-icon><Download /></el-icon>
+                    {{ item.download_num || 0 }}
+                  </span>
                 </div>
               </div>
             </el-card>
           </el-col>
         </el-row>
+
+        <el-empty v-if="!loading && sceneList.length === 0" description="暂无场景数据" />
       </div>
-    </el-tab-pane>
-    <el-tab-pane label="热门" name="hot">
-      <div class="filter-container">
-        <el-row :gutter="23">
-          <el-col :span="6" v-for="(item,index) in sceneTableData" :key="index" style="padding-bottom: 18px;">
-            <el-card :body-style="{ padding: '0px'}">
-              <div style="position: relative">
-                <div class="main" style=" position: absolute">
-                  <span class="word" v-if="item.type === 'layoutScene'">普通场景</span>
-                  <span class="word" v-else-if="item.type === 'timeScene'">盲盒模式</span>
-                </div>
-                <img v-if="item.image_name !==imgpath" @click="handleInto(item)" :src="item.image_name"  alt="" width="100%" height="300px"/>
-                <img v-else-if="item.image_name===imgpath" @click="handleInto(item)" :src="modelimg"  alt="" width="100%" height="300px" />
-                <div class="container-title" style="margin-top: 5px;">
-                  <span style="color:#303133;margin-left: 5px;font-size: 14px;">{{item.name}}</span>
-                </div>
-                <div class="bottom clearfix" style="margin-top: 10px;height: 60px;">
-                  <span style="color:#999;font-size: 14px;margin-left: 5px;" class="hoveDesc"> {{ item.desc }}</span>
-                </div>
-                <div class="bottom-img" style="margin-top: 5px;width: 100%;height: 20px;margin-bottom: 10px">
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-if="item.have_fav === true"><svg-icon icon-class="fav_active" style="margin-right: 10px" @click="thumbup(item)"/>{{item.fav_num}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-else-if="item.have_fav === false"><svg-icon icon-class="fav_not_active" style="margin-right: 10px" @click="thumbup(item)"/>{{item.fav_num}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px"><svg-icon icon-class="has_read" style="margin-right: 10px"/>{{item.total_view}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-if="item.type === 'layoutScene'"><svg-icon icon-class="download" style="margin-right: 10px"/>{{item.download_num}}</span>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
+
+      <!-- Pagination -->
+      <div v-if="total > 0" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next, jumper"
+          background
+          @current-change="handlePageChange"
+        />
       </div>
-    </el-tab-pane>
-    <el-tab-pane label="计时场景" name="time">
-      <div class="filter-container">
-        <el-row :gutter="23">
-          <el-col :span="6" v-for="(item,index) in sceneTableData" :key="index" style="padding-bottom: 18px;">
-            <el-card :body-style="{ padding: '0px'}">
-              <div style="position: relative">
-                <div class="main" style=" position: absolute">
-                  <span class="word" v-if="item.type === 'layoutScene'">普通场景</span>
-                  <span class="word" v-else-if="item.type === 'timeScene'">盲盒模式</span>
-                </div>
-                <img v-if="item.image_name !==imgpath" @click="handleInto(item)" :src="item.image_name"  alt="" width="100%" height="300px"/>
-                <img v-else-if="item.image_name===imgpath" @click="handleInto(item)" :src="modelimg"  alt="" width="100%" height="300px" />
-                <div class="container-title" style="margin-top: 5px;">
-                  <span style="color:#303133;margin-left: 5px;font-size: 14px;">{{item.name}}</span>
-                </div>
-                <div class="bottom clearfix" style="margin-top: 10px;height: 60px;">
-                  <span style="color:#999;font-size: 14px;margin-left: 5px;" class="hoveDesc"> {{ item.desc }}</span>
-                </div>
-                <div class="bottom-img" style="margin-top: 5px;width: 100%;height: 20px;margin-bottom: 10px">
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-if="item.have_fav === true"><svg-icon icon-class="fav_active" style="margin-right: 10px" @click="thumbup(item)"/>{{item.fav_num}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-else-if="item.have_fav === false"><svg-icon icon-class="fav_not_active" style="margin-right: 10px" @click="thumbup(item)"/>{{item.fav_num}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px"><svg-icon icon-class="has_read" style="margin-right: 10px"/>{{item.total_view}}</span>
-                  <span style="color: #999;font-size: 14px;margin-left: 10px" v-if="item.type === 'layoutScene'"><svg-icon icon-class="download" style="margin-right: 10px"/>{{item.download_num}}</span>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
-      </div>
-    </el-tab-pane>
-  </el-tabs>
-  <div style="margin-top: 20px">
-    <el-pagination
-      :page-size="page.size"
-      @current-change="getScene"
-      layout="total, prev, pager, next, jumper"
-      :total="page.total">
-    </el-pagination>
+    </el-card>
   </div>
-</div>
 </template>
 
-<script>
-import { layoutList } from '@/api/layout'
-import CountDown from 'vue2-countdown'
-import { getSceneData,thumbup } from '@/api/scene'
-import { start,timetemplist,timetempadd,stoptimetemp,gettimetemp,publicMethod } from '@/api/timemoudel'
-export default {
-  name: 'index',
-  inject: ['reload'],
-  components: {
-    CountDown
-  },
-  data(){
-    return {
-      tableData: [],
-      sceneTableData:[],
-      sceneDict:{},
-      search: "",
-      page:{
-        total: 0,
-        size: 20,
-      },
-      get_time:"",
-      timelist:[],
-      countlist:[],
-      imgpath: '/images/',
-      modelimg: require("../../assets/modelbg.jpg"),
-      // isAdmin: false
-      activeName:'all',
-    }
-  },
-  methods: {
-    layoutList(page){
-      this.tableData = []
-      layoutList(this.search, page, "flag").then(response => {
-        let rsp = response.data
-        rsp.results.forEach((info,index) => {
-          info.image_name = '/images/'+ info.image_name
-          this.tableData.push(info)
-        })
-        this.page.total = rsp.count
-      }).catch(err => {
-        this.$message({
-          type: 'error',
-          message: '服务器内部错误!'
-        })
-      })
-    },
-    gettimelist(){
-      gettimetemp().then(response => {
-        let data = response.data.results
-          this.countlist = data
-          if (this.countlist.length===0){
-          }else {
-            this.countlist[0].end_date = publicMethod.getTimestamp(this.countlist[0].end_date)
-            this.countlist[0].start_date = publicMethod.getTimestamp(this.get_time)
-          }
-        }
-      )
-    },
-    handleQuery(){
-      this.getScene(1)
-    },
-    handleInto(item){
-      if (item.type === 'layoutScene'){
-        this.$router.push({path: "/scene/index", query: {"layout_id": item.id}})
-      }
-      if (item.type === 'timeScene'){
-        this.$router.push({path:"/timelist/index", query: {"temp_id": item.id}})
-      }
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { getSceneData, thumbup } from '@/api/scene'
 
-    },
-    templist(){
-        timetemplist().then(response =>{
-          let data = response.data
-          data.results.forEach((info,index) => {
-            info.image_name = '/images/'+ info.image_name
-            this.timelist.push(info)
-          })
-          this.page.total += data.count
-        })
-    },
-    handleOk(titem){
-      if (this.countlist.length!==0){
-        this.$message({
-          message: '已有时间模式在运行，请先关闭',
-          type: 'error'
-        })
-        return
-      }else{
-        this.opendialog(titem)
-      }
-    },
-    opendialog(item){
-      this.item = item
-      if (item.flag_status===true){
-        this.$message({
-          type:"error",
-          message:item.time_range + "分钟挑战赛已经开始"
-        })
-      }else{
-      this.$confirm('是否开始挑战?', '提示', {
-        center: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        start(item).then(response => {
-          const data = response.data;
-          let msgType = 'success';
-          let msg = '';
-          if('200'===data.code){
-            msg = '计时模式开始启动！'
-          }else if ('2001' === data.code){
-            msg = '计时模式已经启动，请勿重新启动'
-          }else{
-            msgType = 'error';
-            msg = '内部错误';
-          }
-          this.$message({
-            type: msgType,
-            message: msg,
-          });
-        })
-        this.$router.push({ path: '/dashboard' })
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: '已取消挑战'
-        });
-      });
-    }},
-    stop(){
-      this.$confirm('是否取消挑战?', '提示', {
-        center: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        stoptimetemp().then(response => {
-          const data = response.data;
-          let msgType = 'success';
-          let msg = '';
-          if('2000'===data.code){
-            msg = '计时模式已经关闭！'
-          }else{
-            msgType = 'error';
-            msg = '关闭失败,内部错误';
-          }
-          this.$message({
-            type: msgType,
-            message: msg,
-          });
-        })
-        this.$router.push({ path: '/dashboard' })
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: '已取消'
-        });
-      });
-    },
-    autostop(){
-      stoptimetemp().then(response => {
-          const data = response.data;
-          let msgType = 'success';
-          let msg = '';
-          if('2000'===data.code){
-            msg = '计时模式已经关闭！'
-          }else{
-            msgType = 'error';
-            msg = '关闭失败,内部错误';
-          }
-          this.$message({
-            type: msgType,
-            message: msg,
-          });
-        })
-    },
-    currentTabs(tab, event){
-      this.activeName = tab.name
-      this.getScene(1,this.activeName)
-    },
-    getScene(page){
-      getSceneData(this.search,page,this.activeName).then(response=>{
-        this.sceneDict = {}
-        this.sceneTableData = []
-        if (response.data.code === 200){
-          response.data.result.forEach((info,index) => {
-            info.image_name = '/images/'+ info.image_name
-            this.sceneTableData.push(info)
-            this.sceneDict[info.id] = info
-          })
-          this.page.total = response.data.count
-        }else {
-          this.$message({
-          type: 'error',
-          message: '数据返回失败!'
-        })
-        }
-      })
-    },
-    thumbup(item){
-      if(this.sceneDict[item.id].have_fav === true){
-        if(this.sceneDict[item.id].fav_num > 0){
-          this.sceneDict[item.id].fav_num -= 1
-        }
-        this.sceneDict[item.id].have_fav = false
-      }
-      else{
-        this.sceneDict[item.id].fav_num += 1
-        this.sceneDict[item.id].have_fav = true
-      }
-      thumbup(item.id)
-    }
-  },
-  created() {
-    // this.handleQuery()
-    // this.templist()
-    this.gettimelist()
-    this.getScene()
-  },
-  mounted: function() {
-      var _this = this;
-      let yy = new Date().getFullYear();
-      let mm = new Date().getMonth()+1;
-      let dd = new Date().getDate();
-      let hh = new Date().getHours();
-      let mf = new Date().getMinutes()<10 ? '0'+new Date().getMinutes() : new Date().getMinutes();
-      let ss = new Date().getSeconds()<10 ? '0'+new Date().getSeconds() : new Date().getSeconds();
-      _this.get_time = yy+'-'+mm+'-'+dd+' '+hh+':'+mf+':'+ss;
+const router = useRouter()
+
+// ── Constants ──
+const pageSize = 20
+
+// ── State ──
+const sceneList = ref([])
+const total = ref(0)
+const loading = ref(true)
+const currentPage = ref(1)
+const searchQuery = ref('')
+const activeTag = ref('all')
+
+// ── Data Fetching ──
+function fetchData() {
+  loading.value = true
+  getSceneData(searchQuery.value, currentPage.value, activeTag.value, '')
+    .then(response => {
+      const data = response.data
+      sceneList.value = data.results || []
+      total.value = data.count || 0
+      loading.value = false
+    })
+    .catch(() => {
+      loading.value = false
+    })
+}
+
+// ── Handlers ──
+function handleSearch() {
+  currentPage.value = 1
+  fetchData()
+}
+
+function handleTagChange() {
+  currentPage.value = 1
+  fetchData()
+}
+
+function handlePageChange(page) {
+  currentPage.value = page
+  fetchData()
+}
+
+function goToDetail(item) {
+  if (item.type === 'timeScene') {
+    router.push(`/scene/timeindex/${item.id}`)
+  } else {
+    router.push(`/scene/index/${item.id}`)
   }
 }
+
+function toggleFav(item) {
+  thumbup(item.id)
+    .then(() => {
+      item.have_fav = !item.have_fav
+      item.fav_num += item.have_fav ? 1 : -1
+    })
+    .catch(() => {
+      ElMessage.error('操作失败')
+    })
+}
+
+// ── Lifecycle ──
+onMounted(() => {
+  fetchData()
+})
 </script>
 
-<style scoped>
-.hoveDesc {
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  -o-text-overflow: ellipsis;
-  white-space: nowrap;
-  /*word-break:normal;*/
-  width:auto;
-  display:block;
-  word-break:keep-all;
-  margin-top: 2px;
-}
-.sceneSearch{
-  width: 360px;
-  height: 32px;
-  background: #F2F4F7;
-  border-radius: 4px;
-}
-.word {
-  z-index: 53;
-  position: absolute;
-  left: 10px;
-  top: 6px;
-  width: 28px;
-  display: block;
-  overflow-wrap: break-word;
-  color: rgba(255, 255, 255, 1);
-  font-size: 14px;
-  font-family: MicrosoftYaHei;
-  white-space: nowrap;
-  line-height: 14px;
-}
-.main {
-  z-index: 52;
-  width: 70px;
-  height: 24px;
-  margin-top: 20px;
-  border-radius: 12px 0 0 12px;
-  background-color: rgba(250, 63, 63, 1);
+<style lang="scss" scoped>
+.scene-list-container {
+  padding: 20px;
+
+  .scene-list-card {
+    border-radius: 8px;
+
+    .scene-search {
+      margin-bottom: 16px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .scene-tabs {
+      margin-bottom: 16px;
+    }
+  }
+
+  .scene-card {
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: default;
+    transition: transform 0.25s, box-shadow 0.25s;
+
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .scene-img-wrap {
+      position: relative;
+      height: 160px;
+      overflow: hidden;
+      cursor: pointer;
+
+      .scene-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .img-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f0f2f5;
+        color: #c0c4cc;
+      }
+
+      .scene-type-tag {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+      }
+    }
+
+    .scene-card-body {
+      padding: 12px 16px 16px;
+
+      .scene-name {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &:hover {
+          color: #409eff;
+        }
+      }
+
+      .scene-desc {
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: #909399;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-height: 18px;
+      }
+
+      .scene-stats {
+        display: flex;
+        gap: 16px;
+        font-size: 12px;
+        color: #909399;
+
+        .stat-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+
+          .el-icon {
+            font-size: 14px;
+          }
+        }
+      }
+    }
+  }
+
+  .pagination-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+  }
 }
 </style>

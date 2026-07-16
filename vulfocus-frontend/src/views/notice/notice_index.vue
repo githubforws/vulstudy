@@ -1,291 +1,414 @@
 <template>
-  <div class="app-container">
-    <div class="filter-container">
-      <el-input v-model="search" style="width: 230px" size="medium"></el-input>
-      <el-button class="filter-item" size="medium" style="margin-left: 10px;margin-bottom: 10px" type="primary" icon="el-icon-search" @click="handleQuery(1)">查询</el-button>
-      <el-button type="primary" size="medium" icon="el-icon-edit" @click="editorButton">添加</el-button>
-    </div>
-    <el-table :data="tableData" border stripe align = "center" style="width: 100%" v-loading="tabLoading">
-      <el-table-column type="index" width="50"> </el-table-column>
-      <el-table-column prop="title" label="公告名称" :show-overflow-tooltip=true ></el-table-column>
-      <el-table-column prop="update_date" :show-overflow-tooltip=true label="修改时间"> </el-table-column>
-      <el-table-column :show-overflow-tooltip=true width="150" label="是否为最新发布">
-        <template slot-scope="{row}">
-          <el-tag v-if="row.is_newest===true">YES</el-tag>
-          <el-tag v-else-if="row.is_newest===false">NO</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column fixed="right" label="操作" width="400">
-        <template slot-scope="{row}">
-          <el-button style="display: inline-block;float: left;margin-left: 5px;"
-                     size="mini"
-                     icon="el-icon-edit"
-                     type="primary"
-                     v-if="row.is_public === false"
-                     @click="openEdit(row)">修改</el-button>
-          <el-button style="display: inline-block;float: left;margin-left: 5px;"
-                     size="mini"
-                     icon="el-icon-edit"
-                     type="primary"
-                     @click="onlyEdit(row)">查看</el-button>
-          <el-button style="display: inline-block;float: left;margin-left: 5px;"
-                     size="mini"
-                     v-if="row.is_public === false"
-                     type="primary"
-                     icon="el-icon-share"
-                     @click="shareWrite(row.notice_id)">发布</el-button>
-          <el-button style="display: inline-block;float: left;margin-left: 5px;"
-            size="mini" type="danger"
-            icon="el-icon-delete"
-            @click="handleDelete(row.notice_id)">删除</el-button>
-          <el-tag style="display: inline-block;float: left;line-height: 28px;height: 28px; margin-left: 5px;"
-                  type="success" effect="dark" v-if="row.is_public === true">
-            <div style="display: inline-block;float: left"><span>已发布</span></div>
-          </el-tag>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div>
-      <el-drawer v-if="drawerFlag" size="50%" :direction="derection" modal="false" append-to-body="true" :before-close="closeDrawer" :visible="drawer">
-        <el-input style="width: 600px;margin-bottom: 20px" v-model="title" >
-          <template slot="prepend" style="color: black">公告标题</template>
-        </el-input>
-        <div style="margin-right: 10px">
-          <el-button v-if="drawerFlag===true" icon="el-icon-back" size="small" style="position:absolute;z-index: 9999;right:140px;top: 21px;" @click="closeEditorButton">返回</el-button>
-          <el-button v-if="drawerFlag===true" icon="el-icon-edit-outline" size="small" style="position:absolute;z-index: 9999;right:60px;top: 21px;" @click="createnotice()">提交</el-button>
-          <div v-if="drawerFlag" class="container">
-            <markdown-editor ref="markdownEditor" v-model="notice_data" :options="{hideModeSwitch:true, previewStyle:'vertical'}"  height="400px" />
+  <div class="notice-manage-container app-container">
+    <el-card shadow="never" v-loading="loading">
+      <template #header>
+        <div class="card-header">
+          <span class="card-title">公告管理</span>
+          <div class="header-actions">
+            <el-input
+              v-model="searchQuery"
+              placeholder="按公告名称搜索"
+              style="width: 230px"
+              clearable
+              size="default"
+              @keyup.enter="handleSearch"
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+            <el-button type="primary" @click="handleSearch">查询</el-button>
+            <el-button type="success" @click="openAddDrawer">添加</el-button>
           </div>
         </div>
-      </el-drawer>
-    </div>
-    <div>
-      <el-drawer v-if="second_draw" size="60%" :direction="derection" modal="false" append-to-body="true" :before-close="closeDrawer_sec" :visible="second_draw">
-        <el-main v-loading="loading">
-          <el-button type="primary" icon="el-icon-edit-outline" @click="saveHandleMark(editNoticeInfo.title,editNoticeInfo.notice_id,editNoticeInfo.notice_content)" size="small" style="position:absolute;z-index: 9999;right:80px;top: 20px" v-if="loading != true">保存</el-button>
-          <el-input style="width: 600px;margin-bottom: 20px" v-model="editNoticeInfo.title" >
-            <template slot="prepend" style="color: black">公告标题</template>
-          </el-input>
-          <markdown-editor ref="markdownEditor" v-model="editNoticeInfo.notice_content" :options="{hideModeSwitch:true, previewStyle:'vertical'}"  height="500px" v-if="loading != true"/>
-        </el-main>
-      </el-drawer>
-    </div>
-    <div>
-      <el-drawer v-if="view_show" size="60%" :direction="derection" modal="false" append-to-body="true" :before-close="closeViewDraw" :visible="view_show" >
-        <el-main v-loading="loading">
-          <el-input style="width: 600px;margin-left: 200px;margin-bottom: 20px" v-model="editNoticeInfo.title" disabled="disabled">
-            <template slot="prepend" style="color: black">公告标题</template>
-          </el-input>
-          <ViewerEditor v-model="editNoticeInfo.notice_content" ref="viewerEditor"  :options="{hideModeSwitch:true, previewStyle:'vertical'}"  height="500px" v-if="loading != true"></ViewerEditor>
-        </el-main>
-      </el-drawer>
-    </div>
-    <div style="margin-top: 20px">
-      <el-pagination :page-size="page.size" @current-change="handleQuery" layout="total, prev, pager, next, jumper"
-        :total="page.total">
-      </el-pagination>
-    </div>
+      </template>
+
+      <!-- Notice Table -->
+      <el-table :data="noticeList" stripe border style="width: 100%">
+        <el-table-column type="index" label="序号" width="55" align="center" />
+        <el-table-column prop="title" label="公告名称" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="update_date" label="修改时间" min-width="170" show-overflow-tooltip />
+        <el-table-column label="最新发布" width="130" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.is_newest ? 'success' : 'info'" size="small">
+              {{ scope.row.is_newest ? 'YES' : 'NO' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="360" fixed="right" align="center">
+          <template #default="scope">
+            <!-- Not published -->
+            <template v-if="!scope.row.is_public">
+              <el-button size="small" :icon="Edit" @click="openEditDrawer(scope.row)">修改</el-button>
+              <el-button size="small" :icon="View" @click="openViewDrawer(scope.row)">查看</el-button>
+              <el-button size="small" type="primary" :icon="Upload" @click="handlePublish(scope.row)">发布</el-button>
+              <el-button size="small" type="danger" :icon="Delete" @click="handleDelete(scope.row)">删除</el-button>
+            </template>
+            <!-- Published -->
+            <template v-else>
+              <el-button size="small" :icon="View" @click="openViewDrawer(scope.row)">查看</el-button>
+              <el-tag type="success" size="small" style="margin: 0 4px;">已发布</el-tag>
+              <el-button size="small" type="danger" :icon="Delete" @click="handleDelete(scope.row)">删除</el-button>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- Pagination -->
+      <div class="pagination-wrap">
+        <el-pagination
+          v-if="total > 0"
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next, jumper"
+          background
+          @current-change="handlePageChange"
+        />
+      </div>
+    </el-card>
+
+    <!-- ═══ Add Notice Drawer ═══ -->
+    <el-drawer
+      v-model="addDrawerVisible"
+      title="添加公告"
+      size="50%"
+      direction="btt"
+      destroy-on-close
+      :before-close="closeAddDrawer"
+    >
+      <template #extra>
+        <el-button type="primary" :loading="addSaving" @click="handleAddSubmit">提交</el-button>
+      </template>
+
+      <div class="drawer-body">
+        <el-input
+          v-model="addForm.title"
+          placeholder="公告标题"
+          style="width: 600px; margin-bottom: 16px;"
+          size="default"
+        />
+        <MarkdownEditor
+          ref="addEditorRef"
+          v-model="addForm.content"
+          height="400px"
+          :options="{ hideModeSwitch: true, previewStyle: 'vertical' }"
+        />
+      </div>
+    </el-drawer>
+
+    <!-- ═══ Edit Notice Drawer ═══ -->
+    <el-drawer
+      v-model="editDrawerVisible"
+      title="编辑公告"
+      size="60%"
+      direction="btt"
+      destroy-on-close
+      :before-close="closeEditDrawer"
+    >
+      <template #extra>
+        <el-button type="primary" :loading="editSaving" @click="handleEditSubmit">保存</el-button>
+      </template>
+
+      <div class="drawer-body" v-loading="editLoading">
+        <el-input
+          v-model="editForm.title"
+          placeholder="公告标题"
+          style="width: 600px; margin-bottom: 16px;"
+          size="default"
+        />
+        <MarkdownEditor
+          ref="editEditorRef"
+          v-model="editForm.content"
+          height="500px"
+          :options="{ hideModeSwitch: true, previewStyle: 'vertical' }"
+        />
+      </div>
+    </el-drawer>
+
+    <!-- ═══ View Notice Drawer ═══ -->
+    <el-drawer
+      v-model="viewDrawerVisible"
+      :title="viewForm.title"
+      size="60%"
+      direction="btt"
+      destroy-on-close
+    >
+      <div class="drawer-body" v-loading="viewLoading">
+        <el-input
+          v-model="viewForm.title"
+          disabled
+          style="width: 600px; margin-bottom: 16px; margin-left: 200px;"
+        />
+        <ViewerEditor
+          ref="viewEditorRef"
+          v-model="viewForm.content"
+          height="500px"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
-<script>
-import MarkdownEditor from '@/components/MarkdownEditor'
-import ViewerEditor from '@/components/ViewerEditor'
-import {create_notice,get_notice,delete_notice,public_notice,get_content} from '@/api/notice'
-export default {
-  name: "notice_index",
-  components:{
-    MarkdownEditor,
-    ViewerEditor,
-  },
-  created(){
-    this.InitTable()
-  },
-  data(){
-    return {
-      tableData:[],
-      drawerFlag: false,
-      view_show:false,
-      drawer: true,
-      second_draw:false,
-      title: '',
-      search:"",
-      notice_data: '',
-      tabLoading: '',
-      derection:"btt",
-      taskCheckInterval :null,
-      page:{
-          total: 0,
-          size: 20,
-        },
-      editNoticeInfo:{
-        title : '',
-        notice_id: "",
-        notice_content: '',
-        is_newest: '',
-        is_public: '',
-      },
-      loading:true,
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search, Edit, View, Upload, Delete } from '@element-plus/icons-vue'
+import MarkdownEditor from '@/components/MarkdownEditor/index.vue'
+import ViewerEditor from '@/components/ViewerEditor/index.vue'
+import { get_notice, create_notice, delete_notice, public_notice, get_content } from '@/api/notice'
+
+// ── Constants ──
+const pageSize = 20
+
+// ── Table State ──
+const noticeList = ref([])
+const total = ref(0)
+const loading = ref(true)
+const currentPage = ref(1)
+const searchQuery = ref('')
+
+// ── Add Drawer State ──
+const addDrawerVisible = ref(false)
+const addSaving = ref(false)
+const addEditorRef = ref(null)
+const addForm = reactive({ title: '', content: '' })
+
+// ── Edit Drawer State ──
+const editDrawerVisible = ref(false)
+const editSaving = ref(false)
+const editLoading = ref(false)
+const editEditorRef = ref(null)
+const editForm = reactive({ notice_id: '', title: '', content: '' })
+
+// ── View Drawer State ──
+const viewDrawerVisible = ref(false)
+const viewLoading = ref(false)
+const viewEditorRef = ref(null)
+const viewForm = reactive({ title: '', content: '' })
+
+// =====================================================================
+//  Data Loading
+// =====================================================================
+async function fetchData(page) {
+  loading.value = true
+  try {
+    const res = await get_notice(searchQuery.value, page)
+    const data = res.data
+    noticeList.value = data.results || []
+    total.value = data.count || 0
+  } catch {
+    ElMessage.error('加载公告列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// =====================================================================
+//  Search & Pagination
+// =====================================================================
+function handleSearch() {
+  currentPage.value = 1
+  fetchData(1)
+}
+
+function handlePageChange(page) {
+  currentPage.value = page
+  fetchData(page)
+}
+
+// =====================================================================
+//  Add Notice
+// =====================================================================
+function openAddDrawer() {
+  addForm.title = ''
+  addForm.content = ''
+  addDrawerVisible.value = true
+}
+
+function closeAddDrawer() {
+  addDrawerVisible.value = false
+}
+
+async function handleAddSubmit() {
+  if (!addForm.title.trim()) {
+    ElMessage.warning('请输入公告标题')
+    return
+  }
+  if (!addForm.content.trim()) {
+    ElMessage.warning('请输入公告内容')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确认提交公告？', '提示')
+  } catch {
+    return
+  }
+  addSaving.value = true
+  try {
+    await create_notice({
+      title: addForm.title,
+      notice_content: addForm.content,
+    })
+    ElMessage.success('公告提交成功')
+    addDrawerVisible.value = false
+    fetchData(1)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.msg || '提交失败')
+  } finally {
+    addSaving.value = false
+  }
+}
+
+// =====================================================================
+//  Edit Notice
+// =====================================================================
+async function openEditDrawer(row) {
+  editLoading.value = true
+  editDrawerVisible.value = true
+  editForm.notice_id = row.notice_id || row.id
+  editForm.title = row.title || ''
+  editForm.content = ''
+  try {
+    const res = await get_content(editForm.notice_id)
+    if (res.data.code === 200) {
+      const content = res.data.content
+      editForm.content = typeof content === 'string' ? content : (content?.notice_content || '')
     }
-  },
-  methods:{
-    handleQuery(val){
-      get_notice(this.search,val).then(response=>{
-        this.tableData = response.data.results;
-        this.page.total = response.data.count;
-      })
-    },
-    editorButton(){
-      this.drawerFlag=true;
-      this.drawer = true;
-    },
-    closeEditorButton(){
-      this.drawerFlag=false
-    },
-    closeDrawer(){
-      this.drawer=false;
-      this.loading=true;
-    },
-    createnotice(){
-      let data = {};
-      data.title = this.title;
-      data.notice_content = this.notice_data;
-      this.$confirm('是否确认提交?', '提示',{
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(()=>{
-        create_notice(data).then(response=>{
-          let data = response.data;
-          if(data.code==200){
-            this.$message({
-                title: '成功',
-                message: '提交成功!',
-                type: 'success'
-              });
-            this.drawer = false;
-            this.InitTable();
-          }
-          else{
-            this.$message({
-                title: '提交失败',
-                message: data.message,
-                type: 'error'
-              });
-          }
-        }).catch(()=>{});
-      })
-    },
-    InitTable(){
-      clearInterval(this.taskCheckInterval);
-      get_notice(undefined,1).then(response => {
-        this.tableData = response.data.results
-        this.tabLoading = false
-        this.page.total = response.data.count
-      })
-    },
-    openEdit(row){
-        this.editNoticeInfo = row;
-        this.second_draw = true;
-        get_content(row.notice_id).then(response => {
-          this.editNoticeInfo.notice_content = response.data.content;
-          this.loading=false;
-        })
-      },
-    closeDrawer_sec(){
-      this.second_draw=false;
-      this.loading=true;
-    },
-    saveHandleMark(title,notice_id, notice_content){
-      let data = {};
-      data.notice_id = notice_id;
-      data.notice_content =notice_content;
-      data.update_notice = true;
-      data.title = title;
-      this.$confirm('是否确认提交?', '提示',{
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(()=>{
-        create_notice(data).then(response=>{
-          let data = response.data;
-          if(data.code==200){
-            this.$message({
-                title: '成功',
-                message: '提交成功!',
-                type: 'success'
-              });
-            this.second_draw = false;
-          }
-          else{
-            this.$message({
-                title: '提交失败',
-                message: data.message,
-                type: 'error'
-              });
-          }
-        }).catch(()=>{});
-      })
-    },
-    onlyEdit(row){
-      this.editNoticeInfo = row;
-      this.view_show=true;
-      get_content(row.notice_id).then(response => {
-          this.editNoticeInfo.notice_content = response.data.content;
-          this.loading=false;
-      })
-    },
-    closeViewDraw(){
-      this.view_show=false;
-      this.loading=true;
-    },
-    handleDelete(id){
-      this.$confirm('确认删除?', '提示',{
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(()=>{
-        delete_notice(id).then(response=>{
-          let data = response.data;
-          if(data.code==200){
-            this.$message({
-                title: '成功',
-                message: '删除成功!',
-                type: 'success'
-              });
-            this.InitTable()
-          }else{
-            this.$message({
-                title: '失败',
-                message: data.message,
-                type: 'error'
-              });
-          }
-        })
-      })
-    },
-    shareWrite(id){
-      public_notice(id).then(response=>{
-        let rsp = response.data;
-        if(rsp.code==200){
-          this.$message({
-                title: '成功',
-                message: '发布成功!',
-                type: 'success'
-              });
-          this.InitTable();
-        }else{
-           this.$message({
-              message:rsp.message,
-              type: "error",
-            });
-        }
-      })
+  } catch {
+    ElMessage.error('获取公告内容失败')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+function closeEditDrawer() {
+  editDrawerVisible.value = false
+}
+
+async function handleEditSubmit() {
+  if (!editForm.title.trim()) {
+    ElMessage.warning('请输入公告标题')
+    return
+  }
+  if (!editForm.content.trim()) {
+    ElMessage.warning('请输入公告内容')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确认保存修改？', '提示')
+  } catch {
+    return
+  }
+  editSaving.value = true
+  try {
+    await create_notice({
+      title: editForm.title,
+      notice_content: editForm.content,
+      notice_id: editForm.notice_id,
+      update_notice: true,
+    })
+    ElMessage.success('公告修改成功')
+    editDrawerVisible.value = false
+    fetchData(currentPage.value)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.msg || '修改失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+// =====================================================================
+//  View Notice
+// =====================================================================
+async function openViewDrawer(row) {
+  viewLoading.value = true
+  viewDrawerVisible.value = true
+  viewForm.title = row.title || ''
+  viewForm.content = ''
+  try {
+    const res = await get_content(row.notice_id || row.id)
+    if (res.data.code === 200) {
+      viewForm.content = res.data.content || ''
+    }
+  } catch {
+    ElMessage.error('获取公告内容失败')
+  } finally {
+    viewLoading.value = false
+  }
+}
+
+// =====================================================================
+//  Publish
+// =====================================================================
+async function handlePublish(row) {
+  try {
+    await public_notice(row.notice_id || row.id)
+    ElMessage.success('公告发布成功')
+    fetchData(currentPage.value)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.msg || '发布失败')
+  }
+}
+
+// =====================================================================
+//  Delete
+// =====================================================================
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除公告 "${row.title}" 吗？`,
+      '删除确认',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await delete_notice(row.notice_id || row.id)
+    ElMessage.success('公告已删除')
+    fetchData(currentPage.value)
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(err?.response?.data?.msg || '删除失败')
     }
   }
 }
+
+// =====================================================================
+//  Lifecycle
+// =====================================================================
+onMounted(() => {
+  fetchData(1)
+})
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+.notice-manage-container {
+  padding: 20px;
 
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+
+  .pagination-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+    padding: 8px 0;
+  }
+}
+
+.drawer-body {
+  padding: 0 4px;
+}
 </style>

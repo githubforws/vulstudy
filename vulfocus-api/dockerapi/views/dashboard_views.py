@@ -112,6 +112,8 @@ class DashboardView(APIView):
             except Exception as e:
                 pass
         
+
+        #user_info.greenhand == Ture 开启新手保护 False == False 关闭新手保护
         if user_info.greenhand == True:
             rank_range_greenhand = Q()
             rank_range_greenhand.children.append(('rank__lte', 0.5))
@@ -189,6 +191,9 @@ class DashboardView(APIView):
                     )[min_size:max_size]
             else:
                 query_q = self._build_query_q(time_img_type, rank_range, min_rank)
+                cat_q = self._build_category_filter_q()
+                if cat_q is not None:
+                    query_q.add(cat_q, "AND")
                 img_t_list = []
                 if img_t != "":
                     img_t_list = img_t.split(",")
@@ -285,6 +290,16 @@ class DashboardView(APIView):
                     image_info_list = ImageInfo.objects.all()[min_size:max_size]
             else:
                 query_q = self._build_query_q(time_img_type, rank_range, min_rank)
+                cat_q = self._build_category_filter_q()
+                if cat_q is not None:
+                    query_q.add(cat_q, "AND")
+                if img_t:
+                    img_t_list = img_t.split(",")
+                    degree_q = Q()
+                    degree_q.connector = "AND"
+                    for img_type in img_t_list:
+                        degree_q.children.append(("degree__contains", json.dumps(img_type)))
+                    query_q.add(degree_q, "AND")
                 
                 if len(image_names) > 0:
                     count = ImageInfo.objects.filter(query_q, image_name__in=image_names).count()
@@ -319,6 +334,9 @@ class DashboardView(APIView):
         if query:
             query = query.strip()
             query_q = self._build_query_q(time_img_type, rank_range, min_rank)
+            cat_q = self._build_category_filter_q()
+            if cat_q is not None:
+                query_q.add(cat_q, "AND")
             image_q = Q()
             image_q.connector = "OR"
             image_q.children.append(('image_name__contains', query))
@@ -408,6 +426,16 @@ class DashboardView(APIView):
                         ).all()[min_size:max_size]
             else:
                 query_q = self._build_query_q(time_img_type, rank_range, min_rank)
+                cat_q = self._build_category_filter_q()
+                if cat_q is not None:
+                    query_q.add(cat_q, "AND")
+                if img_t:
+                    img_t_list = img_t.split(",")
+                    degree_q = Q()
+                    degree_q.connector = "AND"
+                    for img_type in img_t_list:
+                        degree_q.children.append(("degree__contains", json.dumps(img_type)))
+                    query_q.add(degree_q, "AND")
                 
                 if len(image_names) > 0:
                     count = ImageInfo.objects.filter(query_q, image_name__in=image_names).count()
@@ -439,27 +467,53 @@ class DashboardView(APIView):
 
     def _build_query_q(self, time_img_type, rank_range, min_rank):
         query_q = Q()
-        
+
         time_img_type_q = Q()
         if len(time_img_type) > 0:
             time_img_type_q.connector = 'OR'
             for img_type in time_img_type:
                 time_img_type_q.children.append(('degree__contains', json.dumps(img_type)))
-        
+
         rank_range_q = Q()
         if rank_range != "":
             rank_range_q.connector = 'AND'
             rank_range_q.children.append(('rank__lte', rank_range))
             rank_range_q.children.append(('rank__gte', min_rank))
-        
+
         is_ok_q = Q()
         is_ok_q.connector = 'AND'
         is_ok_q.children.append(('is_ok', True))
-        
+
         if len(time_img_type_q) > 0:
             query_q.add(time_img_type_q, 'AND')
         if type(rank_range) == float:
             query_q.add(rank_range_q, 'AND')
         query_q.add(is_ok_q, 'AND')
-        
+
         return query_q
+
+    # Build category filter Q from new query params (holeType, devLanguage, devDatabase, devClassify)
+    # Each category's values are connected with OR, categories are connected with AND
+    def _build_category_filter_q(self):
+        category_params = {
+            'HoleType': self.request.GET.get('holeType', ''),
+            'devLanguage': self.request.GET.get('devLanguage', ''),
+            'devDatabase': self.request.GET.get('devDatabase', ''),
+            'devClassify': self.request.GET.get('devClassify', ''),
+        }
+        final_q = Q()
+        any_active = False
+        for json_key, param_value in category_params.items():
+            if not param_value.strip():
+                continue
+            values = [v.strip() for v in param_value.split(',') if v.strip()]
+            if not values:
+                continue
+            any_active = True
+            category_q = Q()
+            category_q.connector = 'OR'
+            for val in values:
+                category_q.children.append(('degree__contains', json.dumps(val)))
+            final_q.add(category_q, 'AND')
+
+        return final_q if any_active else None

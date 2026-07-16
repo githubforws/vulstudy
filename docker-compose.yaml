@@ -20,7 +20,10 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASS: vulfocus
-      VUL_IP: xxx.xxx.xxx.xxx
+      VUL_IP: 127.0.0.1
+      #VUL_IP关系着能不能正确给靶机分配外网可访问的ip地址，务必要根据本机的真实ip地址填写，否则可能会导致无法访问靶机
+      #启动靶机容器后，页面访问靶场时使用的 IP 地址。
+      #需要改成你宿主机局域网 IP / 公网 IP；填错会导致靶场启动后无法访问！
     networks:
       - vulfocus
     depends_on:
@@ -38,7 +41,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASS: vulfocus
-      VUL_IP: xxx.xxx.xxx.xxx
+      VUL_IP: 127.0.0.1
     networks:
       - vulfocus
     depends_on:

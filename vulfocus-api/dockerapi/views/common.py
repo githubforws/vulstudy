@@ -60,6 +60,6 @@ def get_version_config():
     except:
         version_config["version"] = "2.3.0"
     
-    version_config["github_url"] = "https://github.com/fofapro/vulfocus"
+    version_config["github_url"] = "https://github.com/githubforws/vulstudy"
     
     return version_config

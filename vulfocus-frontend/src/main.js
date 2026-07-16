@@ -1,48 +1,40 @@
-import Vue from 'vue'
-
-import 'normalize.css/normalize.css' // A modern alternative to CSS resets
-
-import ElementUI from 'element-ui'
-import 'element-ui/lib/theme-chalk/index.css'
-import locale from 'element-ui/lib/locale/lang/en' // lang i18n
-
-import '@/styles/index.scss' // global css
-
-import App from './App'
-import store from './store'
+import { createApp } from 'vue'
+import App from './App.vue'
 import router from './router'
+import pinia from '@/stores/index.js'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+import locale from 'element-plus/dist/locale/zh-cn.mjs'
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import SvgIcon from '@/components/SvgIcon/index.vue'
 
+import 'normalize.css/normalize.css'
+import NProgress from 'nprogress'
+import 'nprogress/nprogress.css'
 
-import { GoodWizard } from 'vue-good-wizard'
+import '@/styles/index.scss'
+import '@/permission'
 
-import '@/icons' // icon
-import '@/permission' // permission control
-import iconPicker from 'vue-fontawesome-elementui-icon-picker';
+// svg icons
+import 'virtual:svg-icons-register'
 
-Vue.use(iconPicker);
-// import 'font-awesome/scss/font-awesome.scss'
-/**
- * If you don't want to use mock-server
- * you want to use MockJs for mock api
- * you can execute: mockXHR()
- *
- * Currently MockJs will be used in the production environment,
- * please remove it before going online! ! !
- */
-// import { mockXHR } from '../mock'
-// if (process.env.NODE_ENV === 'production') {
-//   mockXHR()
-// }
+const app = createApp(App)
 
-// set ElementUI lang to EN
-Vue.use(ElementUI, { locale })
+app.use(router)
+app.use(pinia)
+app.use(ElementPlus, { locale })
 
+// register all Element Plus icons globally
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component)
+}
 
-Vue.config.productionTip = false
+app.component('svg-icon', SvgIcon)
 
-new Vue({
-  el: '#app',
-  router,
-  store,
-  render: h => h(App)
-})
+NProgress.configure({ showSpinner: false })
+
+// Provide a $t fallback for Element Plus internal components
+// that expect vue-i18n to be installed
+app.config.globalProperties.$t = key => key
+
+app.mount('#app')

@@ -256,18 +256,40 @@ class ImageInfoViewSet(viewsets.ModelViewSet):
         if "image_desc" in data:
             image_desc = data["image_desc"].strip()
             image_info.image_desc = image_desc
-        
+
         if "degree" in data:
-            degree = data['degree']
-            if degree['HoleType']:
-                degree['HoleType'] = list(set(degree['HoleType']))
-            if degree['devLanguage']:
-                degree['devLanguage'] = list(set(degree['devLanguage']))
-            if degree['devDatabase']:
-                degree['devDatabase'] = list(set(degree['devDatabase']))
-            if degree['devClassify']:
-                degree['devClassify'] = list(set(degree['devClassify']))
-            image_info.degree = json.dumps(degree)
+            raw = data['degree']
+            # Accept both dict and JSON string (from frontend JSON.stringify)
+            if isinstance(raw, str):
+                try:
+                    incoming_degree = json.loads(raw)
+                except json.JSONDecodeError:
+                    incoming_degree = {}
+            else:
+                incoming_degree = raw
+            if not isinstance(incoming_degree, dict):
+                incoming_degree = {}
+
+            # Merge with existing degree instead of replacing entirely
+            existing_degree = {}
+            if image_info.degree:
+                try:
+                    existing_degree = json.loads(image_info.degree)
+                except (json.JSONDecodeError, TypeError):
+                    existing_degree = {}
+            if not isinstance(existing_degree, dict):
+                existing_degree = {}
+
+            # Only overwrite fields that are present in incoming data
+            for key in ['HoleType', 'devLanguage', 'devDatabase', 'devClassify']:
+                if key in incoming_degree:
+                    val = incoming_degree[key]
+                    if isinstance(val, list):
+                        existing_degree[key] = list(set(val))
+                    else:
+                        existing_degree[key] = val
+
+            image_info.degree = json.dumps(existing_degree)
         
         image_info.update_date = django.utils.timezone.now()
         image_info.save()
@@ -381,44 +403,49 @@ class ImageInfoViewSet(viewsets.ModelViewSet):
     def search_docker_hub(self, request):
         user = request.user
         if not user.is_superuser:
-            return JsonResponse(R.build(msg="权限不足"))
-        
-        keyword = request.GET.get("q", "")
-        if not keyword:
-            keyword = "vulfocus"
-        else:
-            keyword = "vulfocus/" + keyword
-        
+            return JsonResponse(R.build(msg="权限不足"), status=403)
+
+        query = request.GET.get("q", "").strip().lower()
         summaries = []
         try:
             import requests
-            url = "https://hub.docker.com/api/content/v1/products/search?page_size=50&q={}&type=image".format(keyword)
             headers = {
-                "Search-Version": "v3",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             }
-            response = requests.get(url, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
+            # Docker Hub v2 API 列出 vulfocus 命名空间下的所有镜像
+            page = 1
+            total_count = 0
+            while True:
+                url = "https://hub.docker.com/v2/repositories/vulfocus/?page={}&page_size=100".format(page)
+                response = requests.get(url, headers=headers, timeout=15)
+                if response.status_code != 200:
+                    break
                 data = response.json()
-                summaries_list = data.get("summaries", [])
-                if summaries_list:
-                    for item in summaries_list:
-                        summaries.append({"name": item.get("name", "")})
-            else:
-                logging.error(f"Docker Hub API returned status code {response.status_code}: {response.text}")
-                return JsonResponse(R.build(msg="搜索失败，Docker Hub API返回错误"))
-        
+                results = data.get("results", [])
+                total_count = data.get("count", 0)
+                for repo in results:
+                    repo_name = repo.get("name", "")
+                    # 跳过 vulfocus/vulfocus 自身（不是漏洞镜像）
+                    if repo_name == "vulfocus":
+                        continue
+                    # 精确/模糊匹配用户输入
+                    if not query or query in repo_name.lower():
+                        summaries.append({"name": "vulfocus/" + repo_name})
+                # 如果已匹配到足够结果或已翻完所有页
+                if len(summaries) >= 20 or len(results) < 100:
+                    break
+                page += 1
+
         except requests.exceptions.Timeout:
             logging.error("Docker Hub API request timed out")
-            return JsonResponse(R.build(msg="搜索超时，请稍后重试"))
+            return JsonResponse(R.build(msg="搜索超时，请稍后重试"), status=504)
         except requests.exceptions.ConnectionError:
             logging.error("Docker Hub API connection error")
-            return JsonResponse(R.build(msg="网络连接失败，请检查网络"))
+            return JsonResponse(R.build(msg="网络连接失败，请检查网络"), status=502)
         except Exception as e:
             logging.error(f"Docker Hub search error: {str(e)}")
-            return JsonResponse(R.build(msg=f"搜索失败: {str(e)}"))
-        
+            return JsonResponse(R.build(msg=f"搜索失败: {str(e)}"), status=500)
+
         return JsonResponse(R.ok(data={"summaries": summaries}))
 
     @action(methods=["get"], detail=False, url_path="local")

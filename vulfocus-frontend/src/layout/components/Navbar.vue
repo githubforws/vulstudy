@@ -1,99 +1,104 @@
 <template>
   <div class="navbar">
+    <div class="navbar-left">
+      <div class="hamburger-container" @click="toggleSideBar">
+        <el-icon :size="20">
+          <Fold v-if="sidebar.opened" />
+          <Expand v-else />
+        </el-icon>
+      </div>
+      <Breadcrumb class="breadcrumb-container" />
+    </div>
 
-    <hamburger :is-active="sidebar.opened" class="hamburger-container" @toggleClick="toggleSideBar" />
-
-    <breadcrumb class="breadcrumb-container" />
     <div class="right-menu">
-      <el-dropdown class="notice_show" trigger="click">
-        <div class="notice_wraper">
-          <svg-icon icon-class="llindang" style="width:28px;height:28px" />
-          <el-badge :value="notifications_count" class="item" v-if="notifications_count!=0" style="margin-left:-12px;margin-top:-17px;"></el-badge>
+      <!-- Notifications -->
+      <el-dropdown class="notice-dropdown" trigger="click">
+        <div class="notice-wrapper">
+          <el-badge :value="notificationsCount" :hidden="notificationsCount === 0" class="notice-badge">
+            <el-icon :size="22"><Bell /></el-icon>
+          </el-badge>
         </div>
-        <el-dropdown-menu slot="dropdown" class="notice-dropdown">
-          <router-link to="/notices/all" >
-            <el-dropdown-item v-for="item in notice_list">
-              {{item}}
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="(item, index) in noticeList" :key="index">
+              <router-link to="/notices/all">{{ item }}</router-link>
             </el-dropdown-item>
-          </router-link>
-        </el-dropdown-menu>
-       </el-dropdown>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+
+      <!-- User Avatar -->
       <el-dropdown class="avatar-container" trigger="click">
         <div class="avatar-wrapper">
-          <img :src="avatar+'?imageView2'" class="user-avatar" style="margin-left:20px">
-          <i class="el-icon-caret-bottom" />
+          <el-avatar :size="28" :src="avatar + '?imageView2'" />
+          <el-icon class="caret-icon"><ArrowDown /></el-icon>
         </div>
-        <el-dropdown-menu slot="dropdown" class="user-dropdown">
-          <router-link to="/">
+        <template #dropdown>
+          <el-dropdown-menu>
             <el-dropdown-item>
-              主页
+              <router-link to="/">主页</router-link>
             </el-dropdown-item>
-          </router-link>
-          <el-dropdown-item divided>
-            <span style="display:block;" @click="updatePwd">修改密码</span>
-          </el-dropdown-item>
-          <el-dropdown-item divided>
-            <span style="display:block;" @click="logout">退出</span>
-          </el-dropdown-item>
-        </el-dropdown-menu>
+            <el-dropdown-item divided @click="goProfile">
+              <span>修改密码</span>
+            </el-dropdown-item>
+            <el-dropdown-item divided @click="logout">
+              <span>退出登录</span>
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
       </el-dropdown>
     </div>
   </div>
 </template>
 
-<script>
-import { mapGetters } from 'vuex'
-import Breadcrumb from '@/components/Breadcrumb'
-import Hamburger from '@/components/Hamburger'
-import { lininfo } from "@/api/docker"
-import { get_notifications_count,get_public_notice }from '@/api/notice'
+<script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAppStore } from '@/stores/app'
+import { useUserStore } from '@/stores/user'
+import { storeToRefs } from 'pinia'
+import Breadcrumb from '@/components/Breadcrumb/index.vue'
+import { get_notifications_count } from '@/api/notice'
 
-export default {
-  data(){
-    return {
-      notice_list:[],
-      notifications_count:0
-    }
-  },
-  components: {
-    Breadcrumb,
-    Hamburger
-  },
-  computed: {
-    ...mapGetters([
-      'sidebar',
-      'avatar',
-      'name'
-    ])
-  },
-  methods: {
-    toggleSideBar() {
-      this.$store.dispatch('app/toggleSideBar')
-    },
-    async logout() {
-      await this.$store.dispatch('user/logout')
-      this.$router.push(`/login?redirect=${this.$route.fullPath}`)
-    },
-    updatePwd() {
-      this.$router.push(`/profile/index`)
-    },
-    get_count(){
-      get_notifications_count().then(response => {
-        this.notifications_count = response.data.notifications_count;
-        this.notice_list = response.data.results;
-      })
-    },
-  },
-  created() {
-    this.get_count();
-  },
-  mounted() {
-      this.notice_timer = setInterval(this.get_count,6000*5)
-  },
-  beforeDestroy() {
-      clearInterval(this.notice_timer);
-  }
+const router = useRouter()
+const appStore = useAppStore()
+const userStore = useUserStore()
+
+const { sidebar } = storeToRefs(appStore)
+const { avatar } = storeToRefs(userStore)
+
+const noticeList = ref([])
+const notificationsCount = ref(0)
+let noticeTimer = null
+
+function toggleSideBar() {
+  appStore.toggleSideBar()
 }
+
+async function logout() {
+  await userStore.logout()
+  router.push(`/login?redirect=/`)
+}
+
+function goProfile() {
+  router.push('/profile/index')
+}
+
+function fetchNotifications() {
+  get_notifications_count().then(response => {
+    notificationsCount.value = response.data.notifications_count
+    noticeList.value = response.data.results
+  })
+}
+
+onMounted(() => {
+  fetchNotifications()
+  noticeTimer = setInterval(fetchNotifications, 30000)
+})
+
+onBeforeUnmount(() => {
+  if (noticeTimer) clearInterval(noticeTimer)
+})
 </script>
 
 <style lang="scss" scoped>
@@ -102,71 +107,66 @@ export default {
   overflow: hidden;
   position: relative;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0,21,41,.08);
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+
+  .navbar-left {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
 
   .hamburger-container {
     line-height: 46px;
     height: 100%;
-    float: left;
     cursor: pointer;
-    transition: background .3s;
-    -webkit-tap-highlight-color:transparent;
+    transition: background 0.3s;
+    -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
 
     &:hover {
-      background: rgba(0, 0, 0, .025)
+      background: rgba(0, 0, 0, 0.025);
     }
   }
 
   .breadcrumb-container {
-    float: left;
+    margin-left: 8px;
   }
 
   .right-menu {
-    float: right;
+    display: flex;
+    align-items: center;
     height: 100%;
-    line-height: 50px;
+    gap: 16px;
 
     &:focus {
       outline: none;
     }
 
-    .right-menu-item {
-      display: inline-block;
-      padding: 0 8px;
-      height: 100%;
-      font-size: 18px;
-      color: #5a5e66;
-      vertical-align: text-bottom;
+    .notice-wrapper {
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background 0.3s;
 
-      &.hover-effect {
-        cursor: pointer;
-        transition: background .3s;
-
-        &:hover {
-          background: rgba(0, 0, 0, .025)
-        }
+      &:hover {
+        background: rgba(0, 0, 0, 0.025);
       }
     }
 
     .avatar-container {
-      margin-right: 30px;
+      cursor: pointer;
 
       .avatar-wrapper {
-        margin-top: 5px;
-        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 6px;
 
-        .user-avatar {
-          cursor: pointer;
-          width: 24px;
-          height: 24px;
-          border-radius: 10px;
-        }
-
-        .el-icon-caret-bottom {
-          cursor: pointer;
-          position: absolute;
-          right: -20px;
-          top: 25px;
+        .caret-icon {
           font-size: 12px;
         }
       }
