@@ -171,6 +171,13 @@ export const asyncRoutes = [
         component: () => import('@/views/layout/manager.vue'),
         meta: { title: '环境编排管理', icon: 'barrage_fill', role: ['admin'] },
       },
+      {
+        path: 'index',
+        name: 'LayoutEditor',
+        component: () => import('@/views/layout/index.vue'),
+        hidden: true,
+        meta: { title: '环境编排', role: ['admin'] },
+      },
     ],
   },
   {

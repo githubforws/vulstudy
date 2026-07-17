@@ -134,7 +134,7 @@ const timerPool = ref([])
 async function loadData(page) {
   loading.value = true
   try {
-    const response = await containerList('', page, searchImageId.value)
+    const response = await containerList('list', page, searchImageId.value)
     const data = response.data
     containerListData.value = (data.results || []).map(item => ({ ...item, _loading: false }))
     total.value = data.count || 0

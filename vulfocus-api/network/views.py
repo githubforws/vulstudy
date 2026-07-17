@@ -32,48 +32,56 @@ class NetWorkInfoViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         data_dict = request.data
         user_id = request.user.id
+
+        if client is None:
+            return JsonResponse(R.err(msg="Docker客户端连接失败"), status=502)
+
         try:
             net_work_name = data_dict['net_work_name']
+        except KeyError:
+            return Response(R.build(msg="网卡名称不能为空"), status=400)
+
+        try:
             network_list = client.networks.list()
             for network in network_list:
                 if network.name == net_work_name:
-                    return JsonResponse(R.err(msg="服务器中已经有同名网卡存在"))
+                    return JsonResponse(R.err(msg="服务器中已经有同名网卡存在"), status=400)
         except Exception as e:
-            return Response(R.build(msg="网卡名称不能为空"))
+            return Response(R.build(msg="获取Docker网络列表失败"), status=502)
+
         try:
             net_work_subnet = data_dict['net_work_subnet']
-        except Exception as e:
-            return Response(R.build(msg="子网不能为空"))
+        except KeyError:
+            return Response(R.build(msg="子网不能为空"), status=400)
         try:
             net_work_gateway = data_dict['net_work_gateway']
-        except Exception as e:
-            return Response(R.build(msg="网关不能为空"))
+        except KeyError:
+            return Response(R.build(msg="网关不能为空"), status=400)
         try:
             net_work_scope = data_dict['net_work_scope']
-        except Exception as e:
+        except KeyError:
             net_work_scope = 'local'
         try:
             net_work_driver = data_dict['net_work_driver']
-        except Exception as e:
+        except KeyError:
             net_work_driver = 'bridge'
         try:
             enable_ipv6 = data_dict['enable_ipv6']
-        except Exception as e:
+        except KeyError:
             enable_ipv6 = False
-        try:
-            rs = NetWorkInfo.objects.filter(net_work_name=net_work_name)
-            if len(rs) > 0:
-                return Response(R.build(msg="网卡名称不能重复"))
-            rs = NetWorkInfo.objects.filter(net_work_subnet=net_work_subnet)
-            if len(rs) > 0:
-                return Response(R.build(msg="子网不能重复"))
-            rs = NetWorkInfo.objects.filter(net_work_gateway=net_work_gateway)
-            if len(rs) > 0:
-                return Response(R.build(msg="网关不能重复"))
-        except Exception as e:
-            print(e)
+
+        if NetWorkInfo.objects.filter(net_work_name=net_work_name).exists():
+            return Response(R.build(msg="网卡名称不能重复"), status=400)
+        if NetWorkInfo.objects.filter(net_work_subnet=net_work_subnet).exists():
+            return Response(R.build(msg="子网不能重复"), status=400)
+        if NetWorkInfo.objects.filter(net_work_gateway=net_work_gateway).exists():
+            return Response(R.build(msg="网关不能重复"), status=400)
+
         if not net_work_subnet:
-            network_list = client.networks.list()
+            try:
+                network_list = client.networks.list()
+            except Exception as e:
+                return JsonResponse(R.err(msg="获取Docker网络列表失败"), status=502)
             for network in network_list:
                 network_configs = network.attrs['IPAM']['Config']
                 if len(network_configs) > 0:
@@ -88,9 +96,9 @@ class NetWorkInfoViewSet(viewsets.ModelViewSet):
                     break
         else:
             if net_work_subnet == "192.168.10.10/24":
-                return JsonResponse(R.err(msg="该网段已在服务器内部使用，请更换网段"))
+                return JsonResponse(R.err(msg="该网段已在服务器内部使用，请更换网段"), status=400)
             if net_work_gateway == "192.168.10.10":
-                return JsonResponse(R.err(msg="该网关已在服务器内部使用，请更换网关"))
+                return JsonResponse(R.err(msg="该网关已在服务器内部使用，请更换网关"), status=400)
             try:
                 ipam_pool = docker.types.IPAMPool(
                     subnet=net_work_subnet,
@@ -100,7 +108,7 @@ class NetWorkInfoViewSet(viewsets.ModelViewSet):
                     pool_configs=[ipam_pool]
                 )
                 if not net_work_name:
-                    return JsonResponse(R.err(msg="网卡名称不能为空"))
+                    return JsonResponse(R.err(msg="网卡名称不能为空"), status=400)
                 try:
                     net_work = client.networks.create(
                         net_work_name,
@@ -109,16 +117,21 @@ class NetWorkInfoViewSet(viewsets.ModelViewSet):
                         scope=net_work_scope
                     )
                 except Exception as e:
-                    return JsonResponse(R.err(msg="子网或者网关设置错误"))
+                    return JsonResponse(R.err(msg=f"Docker网络创建失败: {str(e)}"), status=502)
                 net_work_client_id = str(net_work.id)
                 if not net_work_gateway:
                     net_work_gateway = net_work.attrs['IPAM']['Config']['Gateway']
             except Exception as e:
                 traceback.print_exc()
-                return JsonResponse(R.err(msg="服务器内部错误"))
-        network_info = NetWorkInfo(net_work_id=str(uuid.uuid4()), net_work_client_id=net_work_client_id, create_user=user_id,
-                                    net_work_name=net_work_name, net_work_driver=net_work_driver, net_work_subnet=net_work_subnet,
-                                    net_work_gateway=net_work_gateway, net_work_scope=net_work_scope, enable_ipv6=enable_ipv6)
+                return JsonResponse(R.err(msg="服务器内部错误"), status=500)
+
+        network_info = NetWorkInfo(
+            net_work_id=str(uuid.uuid4()), net_work_client_id=net_work_client_id,
+            create_user=user_id, net_work_name=net_work_name,
+            net_work_driver=net_work_driver, net_work_subnet=net_work_subnet,
+            net_work_gateway=net_work_gateway, net_work_scope=net_work_scope,
+            enable_ipv6=enable_ipv6
+        )
         network_info.save()
         data = NetWorkInfoSerializer(network_info).data
         return JsonResponse(R.ok(data=data))
@@ -133,7 +146,7 @@ class NetWorkInfoViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         if not user.is_superuser:
-            return JsonResponse(R.build(msg="权限不足"))
+            return JsonResponse(R.build(msg="权限不足"), status=403)
         network = self.get_object()
         count = LayoutServiceNetwork.objects.filter(network_id=network).count()
         if count == 0:
@@ -155,4 +168,4 @@ class NetWorkInfoViewSet(viewsets.ModelViewSet):
             network.delete()
             return JsonResponse(R.ok())
         else:
-            return JsonResponse(R.build(msg="网卡 %s 正在使用无法删除" % (network.net_work_subnet,)))
+            return JsonResponse(R.build(msg="网卡 %s 正在使用无法删除" % (network.net_work_subnet,)), status=400)
