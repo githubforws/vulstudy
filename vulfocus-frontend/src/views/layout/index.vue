@@ -67,7 +67,10 @@
               </foreignObject>
 
               <foreignObject v-if="JSON.stringify(ele.attrs) !=='{}' && ele.type === 'Network'" :width="ele.width-30" :height="ele.height" x="5" y="30" style="text-overflow: ellipsis; fill:#768699;color :#768699;">
-                <text x="5" y="30" class="nodeName">网卡名称：{{ele.attrs.name}}</text> <br/>
+                <div :style="{'color': ele.attrs.network_type === 'internal' ? '#e6a23c' : '#67c23a', 'font-weight': 'bold', 'font-size': '11px', 'margin-bottom': '2px'}">
+                  {{ ele.attrs.network_type === 'internal' ? '🔒 内网' : '🌐 DMZ' }}
+                </div>
+                <text x="5" y="30" class="nodeName">名称：{{ele.attrs.name}}</text> <br/>
                 <text x="5" y="50" class="nodeName">网关：{{ele.attrs.gateway}}</text> <br/>
                 <text x="5" y="90" class="nodeName">子网：{{ele.attrs.subnet}}</text><br/>
               </foreignObject>

@@ -61,7 +61,7 @@
             :key="item.id"
             :xs="24" :sm="12" :md="8" :lg="6" :xl="6"
           >
-            <el-card shadow="hover" :body-style="{ padding: '0' }" class="scene-card-item">
+            <el-card shadow="hover" :body-style="{ padding: '0' }" class="scene-card-item" @click="openSceneDetail(item)">
               <!-- Image -->
               <div class="scene-img-wrap">
                 <el-image :src="item.image_name || '/logo.svg'" fit="cover" class="scene-img">
@@ -221,6 +221,8 @@ const router = useRouter()
 
 // ── State: Search & Tabs ──
 const searchQuery = ref('')
+const sceneDetailVisible = ref(false)
+const sceneDetailItem = ref(null)
 const activeTab = ref('all')
 const loading = ref(false)
 const sceneList = ref([])
@@ -280,13 +282,13 @@ async function fetchScenes(page) {
     const tag = activeTab.value === 'layout' ? 'all' : activeTab.value
     const res = await getSceneData(searchQuery.value, page, tag, 'backstage')
     const data = res.data
-    let list = data.results || []
+    let list = data.result || data.results || []
     if (activeTab.value === 'layout') {
       list = list.filter(item => item.type === 'layoutScene')
     }
     sceneList.value = list.map(item => ({
       ...item,
-      status: item.status || { task_id: '', progress: 100 },
+      status: item.status || { task_id: '', progress: 0 },
     }))
     total.value = data.count || 0
   } catch {
@@ -373,6 +375,11 @@ async function submitTimeTemplate() {
 // =====================================================================
 //  Edit / View YAML
 // =====================================================================
+function openSceneDetail(item) {
+  sceneDetailItem.value = item
+  sceneDetailVisible.value = true
+}
+
 async function handleEdit(item) {
   try {
     const res = await layoutList(item.id)

@@ -3,7 +3,7 @@ from rest_framework import viewsets
 from .serializers import LayoutSerializer
 from django.core.paginator import Paginator
 from .models import Layout, LayoutService, LayoutServiceNetwork, LayoutData, LayoutServiceContainer, \
-    LayoutServiceContainerScore, SceneUserFav
+    LayoutServiceContainerScore, SceneUserFav, NetworkSegment, ServiceNetworkAccess
 from django.views.decorators.csrf import csrf_exempt
 from dockerapi.models import ImageInfo, ContainerVul, SysLog, TimeTemp, TimeRank, TimeMoudel
 from dockerapi.serializers import TimeTempSerializer
@@ -183,155 +183,201 @@ class LayoutViewSet(viewsets.ModelViewSet):
             if not nodes or len(nodes) == 0:
                 return JsonResponse(R.build(msg="节点不能为空"))
             connectors = topo_data["connectors"]
-            check_open = False
             container_list = []
             network_dict = {}
             check_network_name_list = []
+            has_dmz_port = False
+            net_type = "legacy"
             for node in nodes:
                 node_id = node["id"]
                 node_type = node["type"]
-                node_attrs = node["attrs"]
-                if len(node_attrs) == 0:
+                node_attrs = node.get("attrs", {})
+                if not node_attrs:
                     return JsonResponse(R.build(msg="节点属性不能为空"))
                 if node_type == "Container":
-                    node_open = node_attrs["open"]
-                    node_port = node_attrs["port"]
-                    if node_open and node_port:
-                        check_open = True
                     container_list.append(node)
                 elif node_type == "Network":
-                    network_name = node_attrs["name"]
+                    network_name = node_attrs.get("name", "")
                     if not network_name:
-                        return JsonResponse(R.build(msg="网卡不能为空"))
+                        return JsonResponse(R.build(msg="网卡名称不能为空"))
                     if network_name in check_network_name_list:
                         return JsonResponse(R.build(msg="不能重复设置网卡"))
                     check_network_name_list.append(network_name)
                     network_dict[node_id] = node
-                if node_attrs == {}:
-                    return JsonResponse(R.build(msg="网卡或容器属性不能为空"))
-            if not check_open:
-                return JsonResponse(R.build(msg="请开放可访问入口"))
+                    # 检测是否为多网络模式（任意网络节点有 network_type 属性）
+                    if node_attrs.get("network_type") in ("dmz", "internal"):
+                        net_type = "multi"
+
             if len(container_list) == 0:
                 return JsonResponse(R.build(msg="容器环境不能为空"))
-            if len(network_dict) == 0:
+
+            if net_type == "multi":
+                # ─── 多网络验证 ───
+                # 1. 每个容器必须通过连线接入至少一个网络
+                # 2. 至少有一个容器接入 DMZ 网络并开放端口（外网入口）
+                # 3. Internal 网络中的容器不能有端口映射
+                container_networks = {}  # container_id -> [network_id]
+                for conn in connectors:
+                    target = conn["targetNode"]
+                    source = conn["sourceNode"]
+                    if target["id"] in network_dict:
+                        container_networks.setdefault(source["id"], []).append(target["id"])
+                    if source["id"] in network_dict:
+                        container_networks.setdefault(target["id"], []).append(source["id"])
+
                 for container in container_list:
-                    if not container["attrs"]["open"]:
-                        return JsonResponse(R.build(msg="在不配置网卡段情况下请保证所有的环境开放访问权限"))
-            else:
-                if not connectors or len(connectors) == 0:
+                    cid = container["id"]
+                    net_ids = container_networks.get(cid, [])
+                    if not net_ids:
+                        return JsonResponse(R.build(msg="所有容器必须接入网络"))
+
+                    is_open = container["attrs"].get("open", False)
+                    port = container["attrs"].get("port", "")
+                    has_dmz = any(network_dict[nid]["attrs"].get("network_type", "dmz") == "dmz" for nid in net_ids)
+                    has_internal = any(network_dict[nid]["attrs"].get("network_type", "dmz") == "internal" for nid in net_ids)
+
+                    # 接入 DMZ 网络且开放 → 满足外网入口条件（端口为空则自动分配）
+                    if has_dmz and is_open:
+                        has_dmz_port = True
+
+                    # 仅接入 Internal 网络（未接入 DMZ）的容器不能开放端口
+                    if not has_dmz and has_internal and (is_open or port):
+                        return JsonResponse(R.build(msg="内网容器不能开放端口"))
+
+                if not has_dmz_port:
+                    return JsonResponse(R.build(msg="至少需要一个 DMZ 容器开放外网访问入口，请设置开放和端口号"))
+                if not connectors:
                     return JsonResponse(R.build(msg="在配置网卡的情况下连接点不能为空"))
-            try:
-                yml_content = build_yml(container_list=container_list, network_dict=network_dict,
-                                        connector_list=connectors)
-                yml_data = yml_content["content"]
+            else:
+                # ─── 旧版验证 ───
+                for container in container_list:
+                    if container["attrs"].get("open") and container["attrs"].get("port"):
+                        has_dmz_port = True
+                if not has_dmz_port:
+                    return JsonResponse(R.build(msg="请开放可访问入口"))
+                if network_dict and not connectors:
+                    return JsonResponse(R.build(msg="在配置网卡的情况下连接点不能为空"))
+
+            with transaction.atomic():
+                operation_name = "创建"
+                if id:
+                    layout = Layout.objects.filter(layout_id=id).first()
+                    operation_name = "修改"
+                else:
+                    layout = Layout(layout_id=uuid.uuid4(), create_date=timezone.now(), update_date=timezone.now())
+                layout.layout_name = name
+                layout.layout_desc = desc
+                layout.create_user_id = user.id
+                layout.image_name = img
+                layout.network_type = net_type
+                # 先保存以获取 layout_id
+                layout.save()
+                layout_data = LayoutData.objects.filter(layout_id=layout).first()
+                if layout_data and layout_data.status == 'running':
+                    return JsonResponse(R.build(msg="环境正在运行中，请首先停止运行"))
+                # 使用 layout_id 生成网络名称，然后构建 yml
+                log_msg = ""
+                try:
+                    yml_content = build_yml(container_list=container_list, network_dict=network_dict,
+                                            connector_list=connectors, layout_id=layout.layout_id,
+                                            network_type=net_type)
+                    yml_data = yml_content["content"]
+                except Exception as e:
+                    return JsonResponse(R.build(msg=f"构建编排失败: {str(e)}"))
                 env_data = yml_content["env"]
-                env_content = ""
-                if len(env_data) > 0:
-                    env_content = "\n".join(env_data)
-                with transaction.atomic():
-                    operation_name = "创建"
-                    if id:
-                        layout = Layout.objects.filter(layout_id=id).first()
-                        operation_name = "修改"
-                    else:
-                        layout = Layout(layout_id=uuid.uuid4(), create_date=timezone.now(), update_date=timezone.now())
-                    layout_data = LayoutData.objects.filter(layout_id=layout).first()
-                    if layout_data and layout_data.status == 'running':
-                        return JsonResponse(R.build(msg="环境正在运行中，请首先停止运行"))
-                    layout.layout_name = name
-                    layout.layout_desc = desc
-                    layout.create_user_id = user.id
-                    layout.image_name = img
-                    layout.raw_content = json.dumps(topo_data, ensure_ascii=False)
-                    layout.yml_content = yaml.dump(yml_content["content"])
-                    layout.env_content = env_content
-                    # 保存到数据库中
-                    layout.save()
+                env_content = "\n".join(env_data) if env_data else ""
+                layout.raw_content = json.dumps(topo_data, ensure_ascii=False)
+                layout.yml_content = yaml.dump(yml_data)
+                layout.env_content = env_content
+                layout.save()
                     # 删除相关原有的服务数据
-                    layout_service_list = list(LayoutService.objects.filter(layout_id=layout).values("service_id"))
-                    # 删除网卡相关数据
-                    services = yml_data["services"]
-                    for service_name in services:
-                        service = services[service_name]
-                        image = service["image"]
-                        image_info = ImageInfo.objects.filter(image_name=image).first()
-                        if not image_info:
-                            return JsonResponse(R.build(msg="%s 镜像不存在" % (image,)))
-                        is_exposed = False
-                        ports = ""
-                        if "ports" in service and len(service["ports"]) > 0:
-                            is_exposed = True
-                        if image_info.image_port:
-                            ports = ",".join(str(image_info.image_port).split(","))
-                        layout_service = LayoutService.objects.filter(layout_id=layout,
-                                                                      service_name=service_name).first()
-                        if not layout_service:
-                            layout_service = LayoutService(service_id=uuid.uuid4(), layout_id=layout,
-                                                           service_name=service_name, create_date=timezone.now(),
-                                                           update_date=timezone.now())
-                        if {"service_id": layout_service.service_id} in layout_service_list:
-                            layout_service_list.remove({"service_id": layout_service.service_id})
-                        layout_service.image_id = image_info
-                        layout_service.service_name = service_name
-                        layout_service.is_exposed = is_exposed
-                        layout_service.exposed_source_port = ports
-                        layout_service.save()
-                        if "networks" not in service:
-                            continue
-                        networks = service["networks"]
-                        service_network_list = list(LayoutServiceNetwork.objects.filter(service_id=layout_service)
-                                                    .values('layout_service_network_id'))
-                        for network in networks:
-                            network_info = NetWorkInfo.objects.filter(net_work_name=network).first()
-                            if not network_info:
-                                return JsonResponse(R.build(msg="%s 网卡不存在" % (network,)))
-                            service_network = LayoutServiceNetwork.objects.filter(service_id=layout_service,
-                                                                                  network_id=network_info, ).first()
-                            if not service_network:
-                                service_network = LayoutServiceNetwork(layout_service_network_id=uuid.uuid4(),
-                                                                       service_id=layout_service,
-                                                                       network_id=network_info,
-                                                                       create_date=timezone.now(),
-                                                                       update_date=timezone.now())
-                            if {
-                                "layout_service_network_id": service_network.layout_service_network_id} in service_network_list:
-                                service_network_list.remove({"layout_service_network_id": service_network.
-                                                            layout_service_network_id})
-                            service_network.save()
-                        # 删除已经不存在的网卡
-                        if len(service_network_list) > 0:
-                            for service_network in service_network_list:
-                                LayoutServiceNetwork.objects.filter(layout_service_network_id=
-                                                                    service_network[
-                                                                        'layout_service_network_id']).delete()
+                # 删除相关原有的服务数据
+                layout_service_list = list(LayoutService.objects.filter(layout_id=layout).values("service_id"))
+                services = yml_data["services"]
+                for service_name in services:
+                    service = services[service_name]
+                    image = service["image"]
+                    image_info = ImageInfo.objects.filter(image_name=image).first()
+                    if not image_info:
+                        return JsonResponse(R.build(msg="%s 镜像不存在" % (image,)))
+                    is_exposed = False
+                    ports = ""
+                    if "ports" in service and len(service["ports"]) > 0:
+                        is_exposed = True
+                    if image_info.image_port:
+                        ports = ",".join(str(image_info.image_port).split(","))
+                    layout_service = LayoutService.objects.filter(layout_id=layout,
+                                                                  service_name=service_name).first()
+                    if not layout_service:
+                        layout_service = LayoutService(service_id=uuid.uuid4(), layout_id=layout,
+                                                       service_name=service_name, create_date=timezone.now(),
+                                                       update_date=timezone.now())
+                    if {"service_id": layout_service.service_id} in layout_service_list:
+                        layout_service_list.remove({"service_id": layout_service.service_id})
+                    layout_service.image_id = image_info
+                    layout_service.service_name = service_name
+                    layout_service.is_exposed = is_exposed
+                    layout_service.exposed_source_port = ports
+                    layout_service.save()
+                    if "networks" not in service:
+                        continue
+                    networks = service["networks"]
+                    service_network_list = list(LayoutServiceNetwork.objects.filter(service_id=layout_service)
+                                                .values('layout_service_network_id'))
+                    for network in networks:
+                        # Strip the vul_<layout_id>_ prefix to get the original network name
+                        orig_network_name = network
+                        if network.startswith("vul_"):
+                            parts = network.split("_", 2)
+                            if len(parts) == 3:
+                                orig_network_name = parts[2]
+                        network_info = NetWorkInfo.objects.filter(net_work_name=orig_network_name).first()
+                        if not network_info:
+                            return JsonResponse(R.build(msg="%s 网卡不存在" % (network,)))
+                        service_network = LayoutServiceNetwork.objects.filter(service_id=layout_service,
+                                                                              network_id=network_info, ).first()
+                        if not service_network:
+                            service_network = LayoutServiceNetwork(layout_service_network_id=uuid.uuid4(),
+                                                                   service_id=layout_service,
+                                                                   network_id=network_info,
+                                                                   create_date=timezone.now(),
+                                                                   update_date=timezone.now())
+                        if {
+                            "layout_service_network_id": service_network.layout_service_network_id} in service_network_list:
+                            service_network_list.remove({"layout_service_network_id": service_network.
+                                                        layout_service_network_id})
+                        service_network.save()
+                    # 删除已经不存在的网卡
+                    if len(service_network_list) > 0:
+                        for service_network in service_network_list:
+                            LayoutServiceNetwork.objects.filter(layout_service_network_id=
+                                                                service_network[
+                                                                    'layout_service_network_id']).delete()
+                # 删除服务数据
+                for layout_service in layout_service_list:
+                    service_id = layout_service['service_id']
                     # 删除服务数据
-                    for layout_service in layout_service_list:
-                        service_id = layout_service['service_id']
-                        # 删除服务数据
-                        LayoutService.objects.filter(service_id=service_id, layout_id=layout).delete()
-                        if layout_data:
-                            # 删除启动容器
-                            LayoutServiceContainer.objects.filter(service_id=service_id, layout_user_id=layout_data). \
-                                delete()
-                            # 删除分数
-                            LayoutServiceContainerScore.objects.filter(layout_id=layout, layout_data_id=layout_data,
-                                                                       service_id=service_id).delete()
-                        else:
-                            # 删除启动容器
-                            LayoutServiceContainer.objects.filter(service_id=service_id).delete()
-                            # 删除分数
-                            LayoutServiceContainerScore.objects.filter(layout_id=layout, service_id=service_id).delete()
-                    request_ip = get_request_ip(request)
-                    sys_log = SysLog(user_id=user.id, operation_type="编排环境", operation_name=operation_name,
-                                     operation_value=name, operation_args=json.dumps(LayoutSerializer(layout).data),
-                                     ip=request_ip)
-                    sys_log.save()
-            except Exception as e:
-                return JsonResponse(R.err(msg="服务器内部错误，请联系管理员"))
+                    LayoutService.objects.filter(service_id=service_id, layout_id=layout).delete()
+                    if layout_data:
+                        # 删除启动容器
+                        LayoutServiceContainer.objects.filter(service_id=service_id, layout_user_id=layout_data). \
+                            delete()
+                        # 删除分数
+                        LayoutServiceContainerScore.objects.filter(layout_id=layout, layout_data_id=layout_data,
+                                                                   service_id=service_id).delete()
+                    else:
+                        # 删除启动容器
+                        LayoutServiceContainer.objects.filter(service_id=service_id).delete()
+                        # 删除分数
+                        LayoutServiceContainerScore.objects.filter(layout_id=layout, service_id=service_id).delete()
+                request_ip = get_request_ip(request)
+                sys_log = SysLog(user_id=user.id, operation_type="编排环境", operation_name=operation_name,
+                                 operation_value=name, operation_args=json.dumps(LayoutSerializer(layout).data),
+                                 ip=request_ip)
+                sys_log.save()
             return JsonResponse(R.ok())
         else:
             return JsonResponse(R.build(msg="权限不足"))
-
     def update(self, request, *args, **kwargs):
         return JsonResponse(R.ok())
 
@@ -836,67 +882,162 @@ def get_random_port(env_content):
     return result_port_list
 
 
-def build_yml(container_list, network_dict, connector_list):
-    yml_data = {}
+def _generate_network_name(layout_id, network_type):
+    """为编排环境生成唯一的 Docker 网络名称"""
+    short_id = str(layout_id).replace("-", "")[:8]
+    return f"vul_{short_id}_{network_type}"
+
+
+def build_yml(container_list, network_dict, connector_list, layout_id=None, network_type="legacy"):
+    """
+    根据拓扑数据生成 docker-compose.yml。
+
+    multi 模式（多网络隔离）：
+        - 每个 Network 节点对应一个 Docker 网络
+        - 使用自定义 driver_opts 设置 icc=false
+        - 容器通过连线接入网络
+        - 自动生成 depends_on
+    legacy 模式（旧版单网络）：
+        - 原有逻辑，所有容器在一个网络
+    """
+    yml_data = {"version": "3.2"}
     services = {}
     all_network = {}
     env_list = []
-    # 环境列表
     image_list = []
-    for id in network_dict:
-        network_name = network_dict[id]["attrs"]["name"]
-        all_network[network_name] = {"external": True}
-    # open
-    for container in container_list:
-        id = container["id"]
-        attrs = container["attrs"]
-        image_name = attrs["name"]
-        open = attrs["open"]
-        port = attrs["port"]
-        port_list = []
-        network_list = []
-        if open and port:
-            for _port in port.split(","):
-                base_target_port = id + "-" + _port
-                encode_base_target_port = base64.b64encode(base_target_port.encode("utf-8"))
-                encode_base_target_port = "VULFOCUS" + encode_base_target_port.hex().upper()
-                if encode_base_target_port not in env_list:
-                    env_list.append(encode_base_target_port)
-                port_str = "${" + encode_base_target_port + "}:" + _port + ""
-                port_list.append(port_str)
-        services[id] = {
-            "image": image_name
-        }
-        if len(port_list) > 0:
-            services[id]["ports"] = port_list
+    service_names = {}  # id -> name mapping
+
+    if network_type == "multi":
+        # ─── 多网络模式 ───
+        # Step 1: 构建网络定义，每个 Network 节点生成一个 Docker 网络
+        net_id_to_name = {}
+        for nid, ndata in network_dict.items():
+            attrs = ndata["attrs"]
+            orig_name = attrs.get("name", "network")
+            net_type = attrs.get("network_type", "dmz")
+            if layout_id:
+                net_name = _generate_network_name(layout_id, orig_name)
+            else:
+                net_name = f"vul_{orig_name}"
+            net_id_to_name[nid] = net_name
+
+            net_config = {
+                "driver": "bridge",
+                "driver_opts": {"com.docker.network.bridge.enable_icc": "false"},
+            }
+            # Internal 网络阻止外网访问
+            if net_type == "internal":
+                net_config["internal"] = True
+            all_network[net_name] = net_config
+
+        # Step 2: 构建服务，确定每个容器的网络接入和端口映射
+        for container in container_list:
+            cid = container["id"]
+            attrs = container["attrs"]
+            image_name = attrs.get("name", "")
+            is_open = attrs.get("open", False)
+            port = attrs.get("port", "")
+            cname = attrs.get("vul_name", cid).replace(":", "").replace("/", "_")[:20]
+            service_names[cid] = cname
+
+            # 端口映射：仅在连接了 DMZ 网络时生效
+            port_list = []
+            if is_open:
+                effective_ports = port if port else '80'
+                for _port in effective_ports.split(","):
+                    _port = _port.strip()
+                    if not _port:
+                        continue
+                    host_port = random.randint(10000, 65535)
+                    port_str = f"{host_port}:{_port}"
+                    port_list.append(port_str)
+
+            # 确定容器接入的网络
+            network_list = []
+            for connector in connector_list:
+                target = connector["targetNode"]
+                source = connector["sourceNode"]
+                net_id = None
+                if target["id"] == cid and source["id"] in net_id_to_name:
+                    net_id = source["id"]
+                elif source["id"] == cid and target["id"] in net_id_to_name:
+                    net_id = target["id"]
+                if net_id and net_id_to_name[net_id] not in network_list:
+                    network_list.append(net_id_to_name[net_id])
+
+            services[cname] = {"image": image_name}
+            if port_list:
+                services[cname]["ports"] = port_list
+            if network_list:
+                services[cname]["networks"] = {n: {} for n in network_list}
+
+        # Step 3: 自动生成 depends_on 关系
+        # 有端口映射（DMZ 入口）的容器依赖无端口映射（内网）的容器
+        # 根据连线推断：source 节点依赖 target 节点
         for connector in connector_list:
-            target_node = connector["targetNode"]
-            target_node_id = target_node["id"]
-            source_node = connector["sourceNode"]
-            source_node_id = source_node["id"]
-            network = None
-            if target_node_id == id:
-                network = network_dict[source_node_id]["attrs"]["name"]
-            elif source_node_id == id:
-                network = network_dict[target_node_id]["attrs"]["name"]
-            if network:
-                network_list.append(network)
-        if len(network_list) > 0:
-            services[id]["networks"] = network_list
-        image_list.append({
-            "open": open,
-            "image_id": attrs["id"],
-            "networks": network_list
-        })
-    yml_data["version"] = "3.2"
+            source = connector["sourceNode"]
+            target = connector["targetNode"]
+            src_name = service_names.get(source["id"])
+            tgt_name = service_names.get(target["id"])
+            if src_name and tgt_name and src_name != tgt_name:
+                if "depends_on" not in services[src_name]:
+                    services[src_name]["depends_on"] = []
+                if tgt_name not in services[src_name]["depends_on"]:
+                    services[src_name]["depends_on"].append(tgt_name)
+
+    else:
+        # ─── Legacy 单网络模式（原有逻辑） ───
+        for nid in network_dict:
+            net_name = network_dict[nid]["attrs"]["name"]
+            all_network[net_name] = {"external": True}
+
+        for container in container_list:
+            cid = container["id"]
+            attrs = container["attrs"]
+            image_name = attrs["name"]
+            is_open = attrs["open"]
+            port = attrs["port"]
+            port_list = []
+            network_list = []
+
+            effective_ports = port if port else "80"
+            if is_open and effective_ports:
+                for _port in effective_ports.split(","):
+                    _port = _port.strip()
+                    if not _port:
+                        continue
+                    host_port = random.randint(10000, 65535)
+                    port_str = f"{host_port}:{_port}"
+                    port_list.append(port_str)
+
+            services[cid] = {"image": image_name}
+            if port_list:
+                services[cid]["ports"] = port_list
+
+            for connector in connector_list:
+                target = connector["targetNode"]
+                source = connector["sourceNode"]
+                net_name = None
+                if target["id"] == cid:
+                    net_name = network_dict.get(source["id"], {}).get("attrs", {}).get("name")
+                elif source["id"] == cid:
+                    net_name = network_dict.get(target["id"], {}).get("attrs", {}).get("name")
+                if net_name and net_name not in network_list:
+                    network_list.append(net_name)
+
+            if network_list:
+                services[cid]["networks"] = network_list
+            image_list.append({
+                "open": is_open,
+                "image_id": attrs.get("id", ""),
+                "networks": network_list,
+            })
+
     yml_data["services"] = services
-    if len(all_network) > 0:
+    if all_network:
         yml_data["networks"] = all_network
-    yml_content = {
-        "content": yml_data,
-        "env": env_list,
-    }
-    return yml_content
+
+    return {"content": yml_data, "env": env_list}
 
 
 def file_iterator(file_path, chunk_size=1024):

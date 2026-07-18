@@ -22,9 +22,15 @@ class Layout(models.Model):
     is_uesful = models.BooleanField(default=True, verbose_name="编排环境是否可用")
     total_view = models.IntegerField(default=0, verbose_name="查看数")
     download_num = models.IntegerField(default=0, verbose_name="下载数")
+    network_type = models.CharField(
+        max_length=20, default="legacy",
+        choices=[("legacy", "旧版单网络"), ("multi", "多网络隔离")],
+        verbose_name="网络模式"
+    )
 
     class Meta:
         db_table = "layout"
+
 
 
 class LayoutService(models.Model):
@@ -131,6 +137,42 @@ class LayoutServiceContainerScore(models.Model):
 
     class Meta:
         db_table = "layout_service_container_score"
+
+
+class NetworkSegment(models.Model):
+    """
+    编排环境网络段
+    """
+    segment_id = models.UUIDField(default=uuid.uuid4(), editable=False, primary_key=True, verbose_name="网段UUID")
+    layout = models.ForeignKey(Layout, on_delete=models.CASCADE, verbose_name="编排ID")
+    network_type = models.CharField(
+        max_length=20, choices=[("dmz", "DMZ"), ("internal", "内网")],
+        verbose_name="网络类型"
+    )
+    network_name = models.CharField(max_length=255, verbose_name="Docker网络名称", unique=True)
+    subnet = models.CharField(max_length=18, blank=True, default="", verbose_name="子网")
+    gateway = models.CharField(max_length=15, blank=True, default="", verbose_name="网关")
+    icc_enabled = models.BooleanField(default=False, verbose_name="是否启用容器间通信")
+    create_date = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        db_table = "network_segment"
+
+
+
+
+class ServiceNetworkAccess(models.Model):
+    """
+    服务-网络接入关系表（替代 LayoutServiceNetwork，区分网络类型）
+    """
+    access_id = models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, verbose_name="接入ID")
+    service = models.ForeignKey('LayoutService', on_delete=models.CASCADE, verbose_name="服务")
+    segment = models.ForeignKey('NetworkSegment', on_delete=models.CASCADE, verbose_name="网络段")
+    ipv4_address = models.CharField(max_length=15, blank=True, default="", verbose_name="固定IPv4地址")
+    create_date = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        db_table = "service_network_access"
 
 
 class SceneUserFav(models.Model):

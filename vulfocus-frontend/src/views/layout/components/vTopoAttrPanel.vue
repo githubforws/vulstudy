@@ -23,10 +23,10 @@
           <el-input type="textarea" v-model="image.desc" size="small" disabled></el-input>
         </el-form-item>
         <el-form-item label="是否开放">
-          <el-switch v-model="image.open"></el-switch>
+          <el-switch v-model="image.open" @change="handleOpenChange"></el-switch>
         </el-form-item>
         <el-form-item label="镜像端口">
-          <label>{{image.port}}</label>
+          <el-input size="small" v-model="image.port" placeholder="留空自动分配（如 80）" :disabled="!image.open"></el-input>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" size="small" @click="handleImageOk">确定</el-button>
@@ -36,6 +36,12 @@
     </div>
     <div v-show="isNetwork">
       <el-form ref="networkForm" :model="network" label-width="80px">
+        <el-form-item label="网络类型">
+          <el-select v-model="network.network_type" size="small" style="width: 100%">
+            <el-option label="DMZ - 外网可访问" value="dmz" />
+            <el-option label="Internal - 内网隔离" value="internal" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="网卡名称">
           <el-autocomplete v-model="searchNetworkName" size="small" placeholder="网卡名称"
                            :fetch-suggestions="querySearchNetworkAsync" @select="handleNetworkSelect"></el-autocomplete>
@@ -97,6 +103,7 @@ const network = reactive({
   name: '',
   subnet: '',
   gateway: '',
+  network_type: 'dmz',
   raw: {}
 })
 
@@ -135,6 +142,7 @@ watch(() => props.vSelectNodeData, (val) => {
       name: '',
       subnet: '',
       gateway: '',
+      network_type: 'dmz',
       raw: {}
     })
     if (JSON.stringify(nodeDataVal.attrs) !== '{}') {
@@ -200,6 +208,7 @@ function handleNetworkSelect(item) {
   network.name = networkData.net_work_name
   network.gateway = networkData.net_work_gateway
   network.subnet = networkData.net_work_subnet
+  if (!network.network_type) network.network_type = 'dmz'
   network.raw = networkData
 }
 
@@ -257,6 +266,7 @@ function handleNetworkOk() {
       name: '',
       subnet: '',
       gateway: '',
+      network_type: 'dmz',
       raw: {}
     })
   }

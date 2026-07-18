@@ -12,6 +12,7 @@ from dockerapi.serializers import ImageInfoSerializer
 from dockerapi.common import R, get_setting_config, DEFAULT_CONFIG
 from tasks.models import TaskInfo
 from layout_image.bridge import get_project
+from layout_image.models import NetworkSegment
 from .container_tasks import create_run_container_task
 import django.utils.timezone as timezone
 import redis
@@ -20,6 +21,46 @@ r = redis.Redis(connection_pool=REDIS_POOL)
 
 
 @shared_task(name="tasks.run_docker_compose")
+
+
+def create_docker_networks(network_names, icc=False):
+    """
+    Create Docker networks with icc disabled.
+    Called before docker-compose up.
+    """
+    created = []
+    for net_name in network_names:
+        try:
+            existing = client.networks.list(filters={"name": net_name})
+            if not existing:
+                net = client.networks.create(net_name, driver="bridge",
+                    options={"com.docker.network.bridge.enable_icc": "false"})
+                created.append(net.id)
+        except Exception:
+            pass
+    return created
+
+
+def cleanup_docker_networks(network_names):
+    """
+    Remove Docker networks by name prefix.
+    Called after docker-compose down.
+    """
+    for net_name in network_names:
+        try:
+            nets = client.networks.list(filters={"name": net_name})
+            for n in nets:
+                n.remove()
+        except Exception:
+            pass
+
+
+def get_layout_network_names(layout_id):
+    """
+    Get all Docker network names for a layout from NetworkSegment.
+    """
+    segments = NetworkSegment.objects.filter(layout_id=layout_id)
+    return [s.network_name for s in segments]
 def run_docker_compose(image_id, container_id, user_id, time_model_id, task_id, countdown):
     img_info = ImageInfo.objects.filter(image_id=image_id).first()
     if not img_info:
@@ -38,6 +79,16 @@ def run_docker_compose(image_id, container_id, user_id, time_model_id, task_id, 
 
         project = get_project(compose_path)
         containers = project.up()
+
+        # Apply icc=false on all non-internal networks for multi-network isolation
+        try:
+            prefix = f"vul_{str(container_id)[:8]}_"
+            for net in client.networks.list():
+                if net.name.startswith(prefix) and not net.attrs.get('Internal', False):
+                    net.reload()
+                    client.api.update_network(net.id, {"Options": {"com.docker.network.bridge.enable_icc": "false"}})
+        except Exception:
+            pass
 
         ports_info = {}
         for container in containers:
@@ -121,6 +172,14 @@ def stop_docker_compose(task_id):
 
         container_vul.container_status = "stop"
         container_vul.save()
+
+        # Clean up multi-network networks if any
+        try:
+            nets = client.networks.list(filters={"name": f"vul_{str(container_id)[:8]}_"})
+            for n in nets:
+                n.remove()
+        except Exception:
+            pass
 
         task_info.task_msg = json.dumps(R.ok())
         task_info.task_status = 3

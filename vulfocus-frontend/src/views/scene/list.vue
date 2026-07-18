@@ -136,7 +136,7 @@ function fetchData() {
   getSceneData(searchQuery.value, currentPage.value, activeTag.value, '')
     .then(response => {
       const data = response.data
-      sceneList.value = data.results || []
+      sceneList.value = data.result || data.results || []
       total.value = data.count || 0
       loading.value = false
     })
