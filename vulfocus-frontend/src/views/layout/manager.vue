@@ -73,18 +73,17 @@
                 <div v-if="!item.is_release && item.type === 'layoutScene'" class="unpublished-badge">未发布</div>
                 <!-- Action buttons overlay -->
                 <div class="action-overlay">
+                  <el-button
+                    v-if="item.type === 'layoutScene' && !item.is_release"
+                    size="small" type="success" :icon="UploadFilled"
+                    @click.stop="handlePublish(item)"
+                  >发布</el-button>
+                  <el-tag v-if="item.type === 'layoutScene' && item.is_release" size="small" type="success" effect="dark">已发布</el-tag>
                   <el-button v-if="item.type === 'layoutScene'" size="small" :icon="View" @click.stop="handleViewYaml(item)">查看</el-button>
                   <el-button size="small" :icon="Edit" @click.stop="handleEdit(item)">编辑</el-button>
                   <el-button size="small" :icon="Delete" type="danger" @click.stop="handleDelete(item)">删除</el-button>
                   <template v-if="item.type === 'layoutScene'">
                     <el-button
-                      v-if="!item.is_release && item.status?.progress !== 100"
-                      size="small" :icon="Upload"
-                      @click.stop="handlePublish(item)"
-                    >发布</el-button>
-                    <el-tag v-else-if="item.is_release" size="small" type="success">已发布</el-tag>
-                    <el-button
-                      v-if="item.status?.progress !== 100"
                       size="small" :icon="Download"
                       @click.stop="handleDownload(item)"
                     >下载</el-button>
@@ -204,7 +203,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
-import { Search, Plus, View, Edit, Delete, Upload, Download, Collection, Timer, Picture } from '@element-plus/icons-vue'
+import { Search, Plus, View, Edit, Delete, Upload, UploadFilled, Download, Collection, Timer, Picture } from '@element-plus/icons-vue'
 import {
   layoutList, layoutDelete, layoutRelease, layoutDownload,
   download_layout_image, getOfficialWebsiteLayout, downloadWebsiteLayout,
@@ -657,9 +656,6 @@ onBeforeUnmount(() => {
       transform: translateY(-3px);
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 
-      .action-overlay {
-        opacity: 1;
-      }
     }
 
     .scene-img-wrap {
@@ -705,8 +701,6 @@ onBeforeUnmount(() => {
         justify-content: center;
         gap: 6px;
         padding: 8px;
-        opacity: 0;
-        transition: opacity 0.25s;
         flex-wrap: wrap;
 
         .el-button {
