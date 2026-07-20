@@ -54,6 +54,7 @@ WORKDIR /vulfocus-api/
 COPY vulfocus-api/ ./
 
 RUN chmod u+x run.sh && \
+    sed -i 's/\r$//' run.sh && \
     python3 -c "import site, os; p=site.getsitepackages()[0]; d=os.path.join(p, 'distutils'); os.makedirs(d, exist_ok=True); open(os.path.join(d, 'version.py'), 'w').write('from packaging.version import Version as StrictVersion, Version')"
 
 # ⑧ 从前端阶段复制构建产物（仅影响最终镜像，不影响构建速度）

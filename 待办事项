@@ -7,6 +7,11 @@ BUG:
 
 测试：
 自动分配端口是否有端口重复校验？
+三、代码审计 / 静态漏洞扫描（项目源码扫描，你的 Vulfocus 前端后端可用）
+Semgrep：开源静态代码扫描，Java/Python/JS/Go，检测命令注入、SQL 拼接、不安全函数
+SonarQube：代码规范 + 安全漏洞，支持 CI 流水线集成
+Bandit：Python 专用安全扫描
+ESLint + security 插件：前端 Vue/JS 漏洞检测
 
 新功能：
 1、添加一个/home网页
