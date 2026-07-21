@@ -306,12 +306,22 @@ function submitFlag() {
 function startScene() {
   startLoading.value = true
   sceneStart(layoutId.value)
-    .then(() => {
+    .then(response => {
+      const body = response.data || {}
+      if (body.status !== 200 && body.code !== 200) {
+        ElMessage.error(body.msg || '启动失败')
+        startLoading.value = false
+        return
+      }
+      const data = body.data || {}
+      openList.value = data.open || []
       ElMessage.success('场景启动成功')
       isRunning.value = true
       startLoading.value = false
+      fetchDetail()
     })
     .catch(() => {
+      ElMessage.error('启动请求失败')
       startLoading.value = false
     })
 }

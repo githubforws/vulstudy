@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class ComposeContainer:
-    def __init__(self, container: DockerContainer):
+    def __init__(self, container: DockerContainer, service_name: str = ""):
         self.container = container
+        self.service = service_name
 
     @property
     def id(self) -> str:
@@ -129,7 +130,7 @@ class ComposeProject:
                     container = existing_containers[0]
                     if container.status != 'running':
                         container.start()
-                    container_list.append(ComposeContainer(container))
+                    container_list.append(ComposeContainer(container, service_name))
                     continue
 
                 ports = self._parse_ports(service_config.get('ports', []))
@@ -159,7 +160,7 @@ class ComposeProject:
                     remove=False
                 )
 
-                container_list.append(ComposeContainer(container))
+                container_list.append(ComposeContainer(container, service_name))
 
             except Exception as e:
                 logger.error(f"Error starting service {service_name}: {e}")

@@ -610,7 +610,7 @@ class LayoutViewSet(viewsets.ModelViewSet):
                     service_container.container_host = container_host
                     # 连接 端口
                     service_container.container_port = container_port
-                    container_status = execute_result["data"]["status"]
+                    container_status = docker_container.status
                     service_container.docker_container_id = docker_container_id
                     service_container.container_status = container_status
                     service_container.update_date = timezone.now()
