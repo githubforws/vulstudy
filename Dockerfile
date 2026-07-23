@@ -47,7 +47,9 @@ COPY vulfocus-api/requirements.txt /tmp/requirements.txt
 # ⑥ pip install 单独一层：requirements.txt 不变就不会重装
 RUN python3 -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
+    rm /tmp/requirements.txt && \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker-compose
 
 # ⑦ 最后复制全部后端代码
 WORKDIR /vulfocus-api/
@@ -60,6 +62,6 @@ RUN chmod u+x run.sh && \
 # ⑧ 从前端阶段复制构建产物（仅影响最终镜像，不影响构建速度）
 COPY --from=frontend-builder /app/dist/ /var/www/html/
 #通过Docker run启动需要必须要设置VUL_IP为本机地址，否则无法正常出现访问地址
-ENV VUL_IP="192.168.1.47" EMAIL_HOST="" EMAIL_HOST_USER="" EMAIL_HOST_PASSWORD="" DOCKER_URL="unix://var/run/docker.sock"
+ENV VUL_IP="192.168.1.47" EMAIL_HOST="" EMAIL_HOST_USER="" EMAIL_HOST_PASSWORD="" DOCKER_URL="unix://var/run/docker.sock" DOCKER_HOST="unix:///var/run/docker.sock"
 
 CMD ["sh", "/vulfocus-api/run.sh"]

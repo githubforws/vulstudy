@@ -16,11 +16,15 @@ import json
 import base64
 import yaml
 import traceback
+import logging
 import django.utils.timezone as timezone
+
+logger = logging.getLogger(__name__)
 from dockerapi.common import R
 from rest_framework.decorators import api_view
 import os
 import uuid
+import subprocess
 from vulfocus.settings import client, ALLOWED_IMG_SUFFIX, DOCKER_COMPOSE, BASE_DIR, COMPOSE_ZIP_PATH, DOWNLOAD_FILE_TYPE, UPLOAD_ZIP_PATH
 from django.db import transaction
 from .bridge import get_project
@@ -416,6 +420,13 @@ class LayoutViewSet(viewsets.ModelViewSet):
                         LayoutServiceNetwork.objects.filter(service_id=service).delete()
                 # 删除服务
                 LayoutService.objects.filter(layout_id=layout).delete()
+                # 停止并清理编排容器和网络
+                compose_file = os.path.join(layout_path, "docker-compose.yml")
+                if os.path.exists(compose_file):
+                    subprocess.run(
+                        ["docker-compose", "-p", layout_id, "-f", compose_file, "down", "-v"],
+                        capture_output=True, check=False,
+                    )
                 # 删除内容
                 layout.delete()
                 # 删除文件和文件夹
@@ -483,49 +494,37 @@ class LayoutViewSet(viewsets.ModelViewSet):
         layout_info = Layout.objects.filter(layout_id=pk, is_release=True).first()
         if not layout_info:
             return JsonResponse(R.build(msg="环境不存在或未发布"))
-        yml_content = layout_info.yml_content
-        env_content = layout_info.env_content
         layout_id = str(layout_info.layout_id)
         layout_path = os.path.join(DOCKER_COMPOSE, layout_id)
+        try:
+            # Regenerate YAML from raw_content so network config always uses latest build_yml()
+            raw_data = json.loads(layout_info.raw_content)
+            nodes = raw_data.get("nodes", [])
+            connectors = raw_data.get("connectors", [])
+            container_list = []
+            network_dict = {}
+            for node in nodes:
+                if node["type"] == "Container":
+                    container_list.append(node)
+                elif node["type"] == "Network":
+                    network_dict[node["id"]] = node
+            yml_result = build_yml(
+                container_list=container_list,
+                network_dict=network_dict,
+                connector_list=connectors,
+                layout_id=layout_info.layout_id,
+                network_type=layout_info.network_type,
+            )
+            yml_content = yaml.dump(yml_result["content"])
+            env_content = "\n".join(yml_result["env"])
+        except Exception as e:
+            traceback.print_exc()
+            return JsonResponse(R.build(msg=f"YAML generation failed: {str(e)}"))
         try:
             env_content = get_random_port(env_content)
         except Exception as e:
             return JsonResponse(R.build(msg=str(e)))
         open_host_list = []
-        # 启动网卡
-        raw_con = json.loads(layout_info.raw_content)
-        network_list = client.networks.list()
-        net_list = []
-        network_names = [item['attrs']['name'] for item in raw_con['nodes'] if item['name'] == "Network"]
-        for i in network_list:
-            net_list.append(i.attrs['Name'])
-        for network_name in network_names:
-            if network_name in net_list:
-                pass
-            else:
-                try:
-                    network_det = NetWorkInfo.objects.filter(net_work_name=network_name).first()
-                    ipam_pool = docker.types.IPAMPool(
-                        subnet=network_det.net_work_subnet,
-                        gateway=network_det.net_work_gateway
-                    )
-                    ipam_config = docker.types.IPAMConfig(
-                        pool_configs=[ipam_pool]
-                    )
-                    net_work = client.networks.create(
-                        network_det.net_work_name,
-                        driver=network_det.net_work_driver,
-                        ipam=ipam_config,
-                        scope=network_det.net_work_scope
-                    )
-                    net_work_client_id = str(net_work.id)
-                    if not network_det.net_work_gateway:
-                        net_work_gateway = net_work.attrs['IPAM']['Config']['Gateway']
-                        network_det.net_work_gateway = net_work_gateway
-                    network_det.net_work_client_id = net_work_client_id
-                    network_det.save()
-                except Exception as e:
-                    return JsonResponse(R.build(msg=str(e)))
         try:
             with transaction.atomic():
                 _tmp_file_path = "docker-compose" + layout_path.replace(DOCKER_COMPOSE, "")
@@ -545,6 +544,8 @@ class LayoutViewSet(viewsets.ModelViewSet):
                 env_file = os.path.join(layout_path, ".env")
                 with open(env_file, "w", encoding="utf-8") as f:
                     f.write("\n".join(env_content))
+                # 清理创建编排时预创建的 Docker 网络，避免子网冲突
+                self._cleanup_layout_docker_networks(layout_info)
                 # 启动
                 container_list = get_project(layout_path).up()
                 # 保存
@@ -632,6 +633,32 @@ class LayoutViewSet(viewsets.ModelViewSet):
                          ip=request_ip)
         sys_log.save()
         return JsonResponse(R.ok(data=result_data))
+
+    def _cleanup_layout_docker_networks(self, layout_info):
+        """
+        清理创建编排时预创建的 Docker 网络，避免 docker-compose up 时子网冲突。
+        编排保存时会通过 Docker SDK 预先创建网络（占用子网），
+        而 docker-compose up 会尝试用相同子网创建带项目前缀的新网络，导致冲突。
+        """
+        try:
+            layout_services = LayoutService.objects.filter(layout_id=layout_info)
+            for service in layout_services:
+                service_networks = LayoutServiceNetwork.objects.filter(service_id=service)
+                for sn in service_networks:
+                    net_info = sn.network_id
+                    try:
+                        docker_network = client.networks.get(net_info.net_work_client_id)
+                        docker_network.remove()
+                        logger.info(
+                            "Cleaned up pre-created Docker network '%s' (subnet: %s) for layout %s",
+                            net_info.net_work_name,
+                            net_info.net_work_subnet,
+                            layout_info.layout_id,
+                        )
+                    except Exception:
+                        pass  # 网络可能已被移除或不存在，忽略
+        except Exception as e:
+            logger.warning("Failed to cleanup pre-created Docker networks: %s", e)
 
     @action(methods=["get"], detail=True, url_path="stop")
     def stop_layout(self, request, pk=None):
@@ -921,13 +948,25 @@ def build_yml(container_list, network_dict, connector_list, layout_id=None, netw
                 net_name = f"vul_{orig_name}"
             net_id_to_name[nid] = net_name
 
-            net_config = {
-                "driver": "bridge",
-                "driver_opts": {"com.docker.network.bridge.enable_icc": "false"},
-            }
-            # Internal 网络阻止外网访问
             if net_type == "internal":
+                # 内网允许容器间通信（支持 DMZ→内网的渗透路径），但不允许访问外网
+                net_config = {
+                    "driver": "bridge",
+                }
                 net_config["internal"] = True
+            else:
+                # DMZ 网络：禁用容器间通信，仅通过端口映射对外暴露
+                net_config = {
+                    "driver": "bridge",
+                    "driver_opts": {"com.docker.network.bridge.enable_icc": "false"},
+                }
+            if attrs.get("subnet"):
+                net_config["ipam"] = {
+                    "config": [{
+                        "subnet": attrs["subnet"],
+                        "gateway": attrs.get("gateway", ""),
+                    }]
+                }
             all_network[net_name] = net_config
 
         # Step 2: 构建服务，确定每个容器的网络接入和端口映射
@@ -986,10 +1025,22 @@ def build_yml(container_list, network_dict, connector_list, layout_id=None, netw
                     services[src_name]["depends_on"].append(tgt_name)
 
     else:
-        # ─── Legacy 单网络模式（原有逻辑） ───
+        # Legacy 单网络模式（由 docker-compose 管理网络）
         for nid in network_dict:
-            net_name = network_dict[nid]["attrs"]["name"]
-            all_network[net_name] = {"external": True}
+            attrs = network_dict[nid]["attrs"]
+            net_name = attrs["name"]
+            net_config = {
+                "driver": "bridge",
+            }
+            subnet = attrs.get("subnet", "")
+            if subnet:
+                net_config["ipam"] = {
+                    "config": [{
+                        "subnet": subnet,
+                        "gateway": attrs.get("gateway", ""),
+                    }]
+                }
+            all_network[net_name] = net_config
 
         for container in container_list:
             cid = container["id"]

@@ -1,16 +1,16 @@
 """
-bridge to docker-compose using docker SDK and pyyaml
+bridge to docker-compose using subprocess docker-compose CLI
 """
 
 import logging
 import os
+import subprocess
 from typing import Dict, List, Optional, Any
 
 import yaml
 from docker.models.containers import Container as DockerContainer
-from docker.models.networks import Network as DockerNetwork
 
-from vulfocus.settings import client, api_docker_client
+from vulfocus.settings import client
 
 
 logger = logging.getLogger(__name__)
@@ -60,134 +60,59 @@ class ComposeProject:
         self.config = config
         self.name = os.path.basename(os.path.normpath(path))
         self.client = client
+        self._compose_file = os.path.join(path, "docker-compose.yml")
 
-    def _create_network(self, net_name: str, net_config: Dict[str, Any]) -> Optional[DockerNetwork]:
-        """Create network if it doesn't exist"""
-        try:
-            existing_nets = {n.name for n in self.client.networks.list()}
-            if net_name in existing_nets:
-                return self.client.networks.get(net_name)
-
-            ipam_pool = None
-            ipam_config = net_config.get('ipam')
-            if ipam_config and 'config' in ipam_config:
-                for pool_config in ipam_config['config']:
-                    ipam_pool = {
-                        'subnet': pool_config.get('subnet'),
-                        'gateway': pool_config.get('gateway')
-                    }
-
-            return self.client.networks.create(
-                name=net_name,
-                driver=net_config.get('driver', 'bridge'),
-                ipam_pool=ipam_pool,
-                attachable=True
-            )
-        except Exception as e:
-            logger.error(f"Error creating network {net_name}: {e}")
-            return None
-
-    def _parse_ports(self, ports_config: List[str]) -> Dict[str, int]:
-        """Parse ports configuration"""
-        ports = {}
-        for port_mapping in ports_config:
-            if isinstance(port_mapping, str):
-                parts = port_mapping.split(':')
-                if len(parts) == 2:
-                    try:
-                        host_port = int(parts[0])
-                        container_port = parts[1]
-                        if '/' in container_port:
-                            container_port, _ = container_port.split('/')
-                        ports[f"{container_port}/tcp"] = host_port
-                    except (ValueError, IndexError):
-                        logger.warning(f"Invalid port mapping: {port_mapping}")
-        return ports
+    def _compose_cmd(self, *args: str) -> subprocess.CompletedProcess:
+        """Run docker-compose with the given arguments"""
+        cmd = [
+            "docker-compose",
+            "-H", "unix:///var/run/docker.sock",
+            "-p", self.name,
+            "-f", self._compose_file,
+        ] + list(args)
+        return subprocess.run(
+            cmd,
+            capture_output=True, text=True,
+            cwd=self.path,
+        )
 
     def up(self) -> List[ComposeContainer]:
-        """Start all services defined in docker-compose.yml"""
+        """Start all services using real docker-compose CLI"""
         container_list = []
         services = self.config.get('services', {})
-        networks = self.config.get('networks', {})
 
-        for net_name, net_config in networks.items():
-            if not net_config.get('external'):
-                self._create_network(net_name, net_config)
+        if not os.path.exists(self._compose_file):
+            logger.error(f"Compose file not found: {self._compose_file}")
+            return container_list
 
-        for service_name, service_config in services.items():
-            try:
-                image = service_config.get('image')
-                if not image:
-                    logger.warning(f"Service {service_name} has no image defined")
-                    continue
+        # ① 调用真实的 docker-compose up -d（--pull missing 跳过已存在的镜像减少网络超时）
+        result = self._compose_cmd("up", "-d", "--pull", "missing")
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"docker-compose up 失败: {result.stderr.strip()}"
+            )
 
-                container_name = f"{self.name}_{service_name}_1"
-
-                existing_containers = self.client.containers.list(
-                    all=True, filters={'name': container_name}
+        # ② 通过 Docker SDK 按 compose 标签查找容器
+        for service_name in services:
+            filters = {"label": f"com.docker.compose.service={service_name}"}
+            containers = self.client.containers.list(all=True, filters=filters)
+            if containers:
+                container_list.append(
+                    ComposeContainer(containers[0], service_name)
                 )
-                if existing_containers:
-                    container = existing_containers[0]
-                    if container.status != 'running':
-                        container.start()
-                    container_list.append(ComposeContainer(container, service_name))
-                    continue
-
-                ports = self._parse_ports(service_config.get('ports', []))
-                environment = service_config.get('environment', {})
-                volumes = service_config.get('volumes', [])
-
-                network_name = networks.get('default', {}).get('external', {}).get(
-                    'name', f"{self.name}_default"
+            else:
+                logger.warning(
+                    f"Service {service_name}: no container found after compose up"
                 )
-                networking_config = None
-                try:
-                    network = self.client.networks.get(network_name)
-                    networking_config = self.client.api.create_networking_config({
-                        network_name: self.client.api.create_endpoint_config()
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get network {network_name}: {e}")
-
-                container = self.client.containers.run(
-                    image=image,
-                    name=container_name,
-                    ports=ports,
-                    environment=environment,
-                    volumes=volumes,
-                    detach=True,
-                    networking_config=networking_config,
-                    remove=False
-                )
-
-                container_list.append(ComposeContainer(container, service_name))
-
-            except Exception as e:
-                logger.error(f"Error starting service {service_name}: {e}")
 
         return container_list
 
     def stop(self) -> List[ComposeContainer]:
-        """Stop all services defined in docker-compose.yml"""
-        container_list = []
-        services = self.config.get('services', {})
-
-        for service_name in services.keys():
-            try:
-                container_name = f"{self.name}_{service_name}_1"
-                existing_containers = self.client.containers.list(
-                    all=True, filters={'name': container_name}
-                )
-
-                for container in existing_containers:
-                    if container.status == 'running':
-                        container.stop()
-                    container_list.append(ComposeContainer(container))
-
-            except Exception as e:
-                logger.error(f"Error stopping service {service_name}: {e}")
-
-        return container_list
+        """Stop all services using real docker-compose CLI"""
+        if not os.path.exists(self._compose_file):
+            return []
+        self._compose_cmd("stop")
+        return []
 
 
 def get_project(path: str) -> ComposeProject:
@@ -210,13 +135,3 @@ def get_project(path: str) -> ComposeProject:
         config = yaml.safe_load(f)
 
     return ComposeProject(path, config)
-
-
-def get_yml_path(path: str) -> Optional[str]:
-    """Get path of docker-compose.yml file"""
-    compose_files = ['docker-compose.yml', 'docker-compose.yaml']
-    for filename in compose_files:
-        full_path = os.path.join(path, filename)
-        if os.path.exists(full_path):
-            return full_path
-    return None

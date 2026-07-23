@@ -23,33 +23,35 @@ class CreateTimeTemplate(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         user_id = request.user.id
-        time_desc = request.data['desc']
-        time_img_type = request.data['time_img_type']
-        rank_range = request.data['rank_range']
-        name = request.data['name']
-        ilist = request.data['ilist']
-        template_pattern = request.data['template_pattern']
-        
+        # 使用 .get() 兼容前端 Vue 3 重写后的字段名，缺失字段给默认值
+        time_desc = request.data.get('time_desc', '')
+        time_img_type = request.data.get('time_img_type', '')
+        rank_range = request.data.get('rank_range', '')
+        name = request.data.get('name', '')
+        ilist = request.data.get('ilist', '')
+        template_pattern = request.data.get('template_pattern', None) or 1
+        # timer_minutes 和 time_range 双兼容（前端发 timer_minutes，旧调用发 time_range）
+        timer_value = request.data.get('timer_minutes', request.data.get('time_range', 0))
+        img = request.data.get('imageName', '')
+
+        try:
+            time_range = int(timer_value)
+        except (TypeError, ValueError):
+            return JsonResponse(data={"code": 2001, "message": "时间范围必须为有效整数"})
+
         existence_name = TimeTemp.objects.filter(name=name).first()
         if ilist:
             ilist = json.dumps(ilist.split(","))
-        
+
         if existence_name:
             return JsonResponse(data={"code": 2001, "message": "名称已存在"})
         if not name:
             return JsonResponse(data={"code": 2001, "message": "名称不能为空"})
         if len(name) > 255:
             return JsonResponse(data={"code": 2001, "message": "名称过长"})
-        if not template_pattern:
-            return JsonResponse(data={"code": 2001, "message": "计时类型不能为空"})
-        if request.data['time_range'].isdigit() != True or int(request.data['time_range']) % 30 != 0:
+        if time_range <= 0 or time_range % 30 != 0:
             return JsonResponse(data={"code": 2001, "message": "时间范围不能为空，并且必须是整数，且是30的倍数"})
-        
-        try:
-            time_range = request.data['time_range']
-        except Exception as e:
-            return JsonResponse(data={"code": 2001, "message": "时间范围不能为空"})
-        
+
         image_type_list = []
         if time_img_type:
             for image_type in time_img_type.split(','):
@@ -60,10 +62,9 @@ class CreateTimeTemplate(viewsets.ModelViewSet):
                     continue
                 image_type_list.append(image_type)
         time_img_type = json.dumps(image_type_list)
-        
-        img = request.data['imageName']
+
         timetemp_info = TimeTemp(
-            user_id=user_id, time_range=int(time_range), time_desc=time_desc, image_name=img,
+            user_id=user_id, time_range=time_range, time_desc=time_desc, image_name=img,
             time_img_type=time_img_type, rank_range=rank_range, name=name, image_ids=ilist,
             template_pattern=template_pattern
         )
@@ -246,8 +247,12 @@ class TimeMoudelSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         user_id = request.user.id
         now_time = datetime.datetime.now().timestamp()
-        time_minute = request.data['time_range']
-        temp_id = request.data['temp_id']
+        temp_id = request.data.get('temp_id', '')
+        # 从模板中读取时间范围，前端不再单独发送 time_range
+        time_temp = TimeTemp.objects.filter(id=temp_id).first()
+        if not time_temp:
+            return JsonResponse({"code": "2001", "msg": "计时模板不存在"})
+        time_minute = time_temp.time_range
         
         data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
         rankdata = TimeRank.objects.filter(user_id=user_id, time_temp_id=temp_id).first()
