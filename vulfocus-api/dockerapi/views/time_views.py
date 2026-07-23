@@ -149,9 +149,19 @@ class TimeMoudelSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         now_time = datetime.datetime.now().timestamp()
-        TimeMoudel.objects.all().filter(end_time__lt=now_time).update(status=False)
-        data = TimeMoudel.objects.all().filter(user_id=self.request.user.id, status=True)
-        return data
+        # 到期自动标记过期并清理所有用户的容器
+        expired = TimeMoudel.objects.filter(end_time__lt=now_time, status=True)
+        for em in expired:
+            container_vul_list = ContainerVul.objects.filter(time_model_id=em.time_id)
+            for cv in container_vul_list:
+                try:
+                    docker_container = client.containers.get(container_id=cv.docker_container_id)
+                    docker_container.remove()
+                except Exception:
+                    pass
+                cv.delete()
+        expired.update(status=False)
+        return TimeMoudel.objects.filter(status=True)
 
     @action(methods=["get"], detail=True, url_path="get")
     def get_layout(self, request, pk=None):
@@ -164,30 +174,30 @@ class TimeMoudelSet(viewsets.ModelViewSet):
         return JsonResponse(data)
 
     def delete(self, request, *args, **kwargs):
-        user_id = request.user.id
+        user = request.user
+        if not user.is_superuser:
+            return JsonResponse({"code": "2001", "msg": "权限不足"})
         now_time = datetime.datetime.now().timestamp()
-        
+
         try:
-            auto_end_data = TimeMoudel.objects.filter(user_id=user_id, end_time__lte=now_time).first()
-            if auto_end_data:
-                time_id = auto_end_data.time_id
-                container_vul_list = ContainerVul.objects.filter(user_id=user_id, time_model_id=time_id)
-                TimeMoudel.objects.filter(user_id=user_id, end_time__lte=now_time).delete()
-            else:
-                data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
-                time_id = data.time_id
-                TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).delete()
-                container_vul_list = ContainerVul.objects.filter(user_id=user_id, time_model_id=time_id)
-            
+            session = TimeMoudel.objects.filter(end_time__gte=now_time, status=True).first()
+            if not session:
+                session = TimeMoudel.objects.filter(end_time__lte=now_time).first()
+            if not session:
+                return JsonResponse({"code": "2001", "msg": "无活跃计时会话"})
+            time_id = session.time_id
+
+            # 清理所有用户在此会话中的容器
+            container_vul_list = ContainerVul.objects.filter(time_model_id=time_id)
             for container_vul in container_vul_list:
                 try:
-                    docker_container_id = container_vul.docker_container_id
-                    docker_container = client.containers.get(container_id=docker_container_id)
+                    docker_container = client.containers.get(container_id=container_vul.docker_container_id)
                     docker_container.remove()
-                except Exception as e:
+                except Exception:
                     pass
                 container_vul.delete()
-            
+
+            TimeMoudel.objects.filter(time_id=time_id).delete()
             return JsonResponse({"code": "2000", "msg": "成功"}, status=201)
         except Exception as e:
             return JsonResponse({"code": "2001", "msg": str(e)})
@@ -197,7 +207,12 @@ class TimeMoudelSet(viewsets.ModelViewSet):
         user_id = request.user.id
         now_time = datetime.datetime.now().timestamp()
         user_data = UserProfile.objects.filter(id=user_id).first()
-        data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
+        # 全局会话：按模板 ID 查找当前活跃的计时会话
+        temp_id = request.GET.get('temp_id', '')
+        if temp_id:
+            data = TimeMoudel.objects.filter(temp_time_id_id=temp_id, end_time__gte=now_time).first()
+        else:
+            data = TimeMoudel.objects.filter(end_time__gte=now_time).first()
         
         if not data:
             return JsonResponse({"code": "2001", "msg": "不在答题模式中", "data": ""})
@@ -226,44 +241,45 @@ class TimeMoudelSet(viewsets.ModelViewSet):
 
     @action(methods=['get'], detail=False, url_path="check")
     def check(self, request, pk=None):
-        user_id = request.user.id
+        user = request.user
+        if not user.is_superuser:
+            return JsonResponse({"code": "2001", "msg": "权限不足"})
         now_time = datetime.datetime.now().timestamp()
-        data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
+        data = TimeMoudel.objects.filter(end_time__gte=now_time).first()
         
         if data:
-            container_vul_list = ContainerVul.objects.filter(user_id=user_id)
+            # 清理所有用户在此会话中的容器
+            container_vul_list = ContainerVul.objects.filter(time_model_id=data.time_id)
             for container_vul in container_vul_list:
                 try:
-                    docker_container_id = container_vul.docker_container_id
-                    docker_container = client.containers.get(container_id=docker_container_id)
+                    docker_container = client.containers.get(container_id=container_vul.docker_container_id)
                     docker_container.remove()
-                except Exception as e:
+                except Exception:
                     pass
                 container_vul.delete()
+            data.delete()
             return JsonResponse({"code": "200", "msg": "OK"})
         else:
             return JsonResponse({"code": "2001", "msg": "时间已到"})
 
     def create(self, request, *args, **kwargs):
-        user_id = request.user.id
+        user = request.user
+        if not user.is_superuser:
+            return JsonResponse({"code": "2001", "msg": "权限不足"})
+        user_id = user.id
         now_time = datetime.datetime.now().timestamp()
         temp_id = request.data.get('temp_id', '')
         # 从模板中读取时间范围，前端不再单独发送 time_range
-        time_temp = TimeTemp.objects.filter(id=temp_id).first()
+        time_temp = TimeTemp.objects.filter(temp_id=temp_id).first()
         if not time_temp:
             return JsonResponse({"code": "2001", "msg": "计时模板不存在"})
         time_minute = time_temp.time_range
-        
-        data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
-        rankdata = TimeRank.objects.filter(user_id=user_id, time_temp_id=temp_id).first()
-        user_data = UserProfile.objects.filter(id=user_id).first()
-        
-        if not rankdata:
-            rd = TimeRank(rank_id=str(uuid.uuid4()), user_id=user_id, user_name=user_data.username, rank=0, time_temp_id=temp_id)
-            rd.save()
-        
+
+        # 同一模板已有活跃会话则不允许重复启动
+        data = TimeMoudel.objects.filter(temp_time_id_id=temp_id, end_time__gte=now_time).first()
+
         if data:
-            return JsonResponse({"code": "2001", "msg": "时间未到", "data": ""})
+            return JsonResponse({"code": "2001", "msg": "计时已启动，请勿重复操作", "data": ""})
         else:
             try:
                 request_ip = get_request_ip(request)
@@ -272,14 +288,14 @@ class TimeMoudelSet(viewsets.ModelViewSet):
                     operation_args={}, ip=request_ip
                 )
                 sys_log.save()
-            except Exception as e:
+            except Exception:
                 pass
-            
-            now_time = datetime.datetime.now()
-            end_time = now_time + datetime.timedelta(minutes=time_minute)
-            start_time_timestamp = now_time.timestamp()
-            end_time_timestamp = end_time.timestamp()
-            
+
+            now_time_dt = datetime.datetime.now()
+            end_time_dt = now_time_dt + datetime.timedelta(minutes=time_minute)
+            start_time_timestamp = now_time_dt.timestamp()
+            end_time_timestamp = end_time_dt.timestamp()
+
             time_moudel = TimeMoudel(
                 time_id=str(uuid.uuid4()), user_id=user_id, start_time=start_time_timestamp,
                 end_time=end_time_timestamp, temp_time_id_id=temp_id, status=True
@@ -287,5 +303,5 @@ class TimeMoudelSet(viewsets.ModelViewSet):
             time_moudel.save()
             time_moudel_info = TimeMoudelSerializer(time_moudel)
             data = time_moudel_info.data
-            
+
             return JsonResponse({"code": "200", "msg": "OK", "data": data}, status=201)

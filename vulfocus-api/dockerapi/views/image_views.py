@@ -544,7 +544,8 @@ class ImageInfoViewSet(viewsets.ModelViewSet):
         user_id = user.id
         
         now_time = datetime.datetime.now().timestamp()
-        time_moudel_data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
+        # 全局会话：查找当前活跃计时会话
+        time_moudel_data = TimeMoudel.objects.filter(end_time__gte=now_time).first()
         time_model_id = ''
         if time_moudel_data:
             time_model_id = time_moudel_data.time_id

@@ -97,7 +97,8 @@ class DashboardView(APIView):
         temp_pattern = None
         
         user_info = UserProfile.objects.filter(username=user.username).first()
-        data = TimeMoudel.objects.filter(user_id=self.request.user.id, end_time__gte=now_time).first()
+        # 全局会话：查找当前活跃的计时会话
+        data = TimeMoudel.objects.filter(end_time__gte=now_time).first()
         
         if data:
             data_temp = TimeTemp.objects.filter(temp_id=data.temp_time_id_id).first()

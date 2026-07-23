@@ -24,7 +24,8 @@ class ContainerVulViewSet(viewsets.ReadOnlyModelViewSet):
         image_id = request.GET.get("image_id", "")
 
         now_time = datetime.datetime.now().timestamp()
-        time_moudel_data = TimeMoudel.objects.filter(user_id=user.id, end_time__gte=now_time).first()
+        # 全局会话：按任意活跃会话获取 time_id
+        time_moudel_data = TimeMoudel.objects.filter(end_time__gte=now_time).first()
         time_model_id = ''
         if time_moudel_data:
             time_model_id = time_moudel_data.time_id
@@ -157,7 +158,8 @@ class ContainerVulViewSet(viewsets.ReadOnlyModelViewSet):
                 container_vul.save()
                 
                 now_time = datetime.datetime.now().timestamp()
-                time_moudel_data = TimeMoudel.objects.filter(user_id=user_id, end_time__gte=now_time).first()
+                # 全局会话：查找当前活跃计时会话
+                time_moudel_data = TimeMoudel.objects.filter(end_time__gte=now_time).first()
                 
                 if time_moudel_data:
                     rank = 0

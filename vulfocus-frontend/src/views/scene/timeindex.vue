@@ -70,13 +70,13 @@
                 />
               </div>
 
-              <!-- Actions -->
-              <div class="timer-actions">
+              <!-- Actions (admin only) -->
+              <div v-if="isAdmin" class="timer-actions">
                 <el-button v-if="!isRunning" type="primary" :loading="startLoading" @click="startTimer">
-                  启动盲盒
+                  启动计时
                 </el-button>
                 <el-button v-else type="warning" :loading="stopLoading" @click="stopTimer">
-                  停止盲盒
+                  停止计时
                 </el-button>
               </div>
 
@@ -174,7 +174,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { sceneGetTemp } from '@/api/timemoudel'
-import { start as startTimerMode, stoptimetemp, timeranklist, publicMethod } from '@/api/timemoudel'
+import { start as startTimerMode, stoptimetemp, gettimetemp, timeranklist, publicMethod } from '@/api/timemoudel'
 import { getComment, commitComment, CommentDelete } from '@/api/user'
 import CountDown from '@chenfengyuan/vue-countdown'
 import Verification from './components/verification.vue'
@@ -220,6 +220,7 @@ const captchaCode = ref('')
 const captchaRef = ref(null)
 
 let timerInterval = null
+let statusPollInterval = null
 
 function fetchDetail() {
   loading.value = true
@@ -263,8 +264,27 @@ function fetchComments() {
 }
 
 function checkTimerStatus() {
-  // This would check if a timer is already running via gettimetemp
-  // Simplified for now
+  // 轮询全局计时会话状态，所有用户均可查看
+  gettimetemp()
+    .then(response => {
+      const results = response.data.results || response.data
+      if (Array.isArray(results) && results.length > 0) {
+        const session = results[0]
+        isRunning.value = true
+        endTime.value = publicMethod.getTimestamp(session.end_date || session.end_time)
+        if (!timerInterval) {
+          startTimerTick()
+        }
+      } else {
+        isRunning.value = false
+        endTime.value = 0
+        if (timerInterval) {
+          clearInterval(timerInterval)
+          timerInterval = null
+        }
+      }
+    })
+    .catch(() => {})
 }
 
 function startTimer() {
@@ -272,13 +292,10 @@ function startTimer() {
   startTimerMode({ temp_id: tempId.value })
     .then(response => {
       const data = response.data
-      if (data.code === '2000' || data.status === 200) {
-        ElMessage.success('盲盒已启动')
-        isRunning.value = true
-        if (data.data) {
-          endTime.value = publicMethod.getTimestamp(data.data.end_date)
-        }
-        startTimerTick()
+      if (data.code === '2000' || data.code === '200' || data.status === 200) {
+        ElMessage.success('计时已启动')
+        // 轮询获取全局会话状态
+        checkTimerStatus()
       } else {
         ElMessage.error(data.msg || '启动失败')
       }
@@ -293,9 +310,13 @@ function stopTimer() {
   stopLoading.value = true
   stoptimetemp()
     .then(() => {
-      ElMessage.success('盲盒已停止')
+      ElMessage.success('计时已停止')
       isRunning.value = false
-      clearInterval(timerInterval)
+      endTime.value = 0
+      if (timerInterval) {
+        clearInterval(timerInterval)
+        timerInterval = null
+      }
       stopLoading.value = false
     })
     .catch(() => {
@@ -361,10 +382,14 @@ onMounted(() => {
   fetchDetail()
   fetchTimeRank(1)
   fetchComments()
+  checkTimerStatus()
+  // 每 5 秒轮询一次全局计时状态
+  statusPollInterval = setInterval(checkTimerStatus, 5000)
 })
 
 onBeforeUnmount(() => {
   if (timerInterval) clearInterval(timerInterval)
+  if (statusPollInterval) clearInterval(statusPollInterval)
 })
 </script>
 
