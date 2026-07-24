@@ -64,7 +64,7 @@
             <el-card shadow="hover" :body-style="{ padding: '0' }" class="scene-card-item" @click="openSceneDetail(item)">
               <!-- Image -->
               <div class="scene-img-wrap">
-                <el-image :src="item.image_name || '/logo.svg'" fit="cover" class="scene-img">
+                <el-image :src="item.image_name ? '/images/' + item.image_name : '/logo.svg'" fit="cover" class="scene-img">
                   <template #error>
                     <div class="img-placeholder"><el-icon :size="40"><Picture /></el-icon></div>
                   </template>
@@ -128,7 +128,7 @@
           :xs="24" :sm="12" :md="8" :lg="6"
         >
           <el-card shadow="hover" :body-style="{ padding: '0' }" class="store-card" @click="downloadOfficial(item)">
-            <el-image :src="item.image_name" fit="cover" class="store-img">
+            <el-image :src="'/images/' + item.image_name" fit="cover" class="store-img">
               <template #error>
                 <div class="img-placeholder" style="height: 180px;"><el-icon :size="32"><Picture /></el-icon></div>
               </template>

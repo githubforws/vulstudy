@@ -16,7 +16,7 @@
             <div v-if="!loading">
               <!-- Image -->
               <el-image
-                :src="sceneImage"
+                :src="sceneImage ? '/images/' + sceneImage : ''"
                 fit="cover"
                 class="detail-img"
               >

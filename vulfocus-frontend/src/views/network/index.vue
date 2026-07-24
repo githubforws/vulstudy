@@ -206,10 +206,6 @@ async function submitAdd() {
       net_work_driver: addForm.net_work_driver,
       enable_ipv6: addForm.enable_ipv6,
     })
-    if (res.data && res.data.code !== 200) {
-      ElMessage.error(res.data.msg || '创建网卡失败')
-      return
-    }
     ElMessage.success('网卡创建成功')
     addDialogVisible.value = false
     currentPage.value = 1

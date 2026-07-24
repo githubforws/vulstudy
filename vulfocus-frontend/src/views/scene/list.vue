@@ -41,7 +41,7 @@
               <!-- Scene Image -->
               <div class="scene-img-wrap" @click="goToDetail(item)">
                 <el-image
-                  :src="item.image_name || '/logo.svg'"
+                  :src="item.image_name ? '/images/' + item.image_name : '/logo.svg'"
                   fit="cover"
                   class="scene-img"
                 >

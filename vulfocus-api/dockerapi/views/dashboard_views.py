@@ -94,7 +94,6 @@ class DashboardView(APIView):
         time_img_type = []
         rank_range = ""
         image_ids = ""
-        temp_pattern = None
         
         user_info = UserProfile.objects.filter(username=user.username).first()
         # 全局会话：查找当前活跃的计时会话
@@ -102,7 +101,6 @@ class DashboardView(APIView):
         
         if data:
             data_temp = TimeTemp.objects.filter(temp_id=data.temp_time_id_id).first()
-            temp_pattern = data_temp.template_pattern
             
             if data_temp.image_ids:
                 image_ids = json.loads(data_temp.image_ids)
@@ -142,12 +140,6 @@ class DashboardView(APIView):
                 query, temp, rank, min_rank, img_t, time_img_type, rank_range,
                 image_ids, image_names, activate_name, min_size, max_size
             )
-        
-        if data and temp_pattern == 1:
-            for image_info in image_info_list:
-                image_info.image_name = ''
-                image_info.image_vul_name = ''
-                image_info.image_desc = ''
         
         data_infos = []
         for imgs in image_info_list:

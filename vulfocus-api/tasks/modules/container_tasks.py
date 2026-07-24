@@ -212,8 +212,14 @@ def stop_container(task_id):
         try:
             container = client.containers.get(container_vul.docker_container_id)
             container.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            task_info = TaskInfo.objects.filter(task_id=task_id).first()
+            if task_info:
+                task_info.task_msg = json.dumps(R.build(msg=f"容器停止失败: {str(e)}"))
+                task_info.task_status = 4
+                task_info.update_date = timezone.now()
+                task_info.save()
+            return
 
         container_vul.container_status = "stop"
         container_vul.save()
@@ -248,9 +254,15 @@ def delete_container(task_id):
 
         try:
             container = client.containers.get(container_vul.docker_container_id)
-            container.remove()
-        except Exception:
-            pass
+            container.remove(force=True)
+        except Exception as e:
+            task_info = TaskInfo.objects.filter(task_id=task_id).first()
+            if task_info:
+                task_info.task_msg = json.dumps(R.build(msg=f"容器删除失败: {str(e)}"))
+                task_info.task_status = 4
+                task_info.update_date = timezone.now()
+                task_info.save()
+            return
 
         container_vul.container_status = "delete"
         container_vul.save()

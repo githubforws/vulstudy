@@ -320,11 +320,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
-import CountDown from '@chenfengyuan/vue-countdown'
 import ViewerEditor from '@/components/ViewerEditor/index.vue'
 import {
   ImgDashboard,
@@ -946,31 +945,61 @@ function copyText(text) {
 // =====================================================================
 //  Timer Mode
 // =====================================================================
+const TIMER_NOTIF_CLASS = 'timer-countdown-notif'
+let countdownTimer = null
+let timerModePoll = null
 function fetchTimerMode() {
   gettimetemp()
     .then(response => {
       const results = response.data.results || []
       countList.value = results
+      // 无活跃计时 → 移除通知、清定时器
+      if (results.length === 0) {
+        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+        const oldEl = document.querySelector('.' + TIMER_NOTIF_CLASS)
+        if (oldEl) oldEl.remove()
+        return
+      }
       if (results.length > 0) {
         const item = results[0]
-        const endTs = publicMethod.getTimestamp(item.end_date)
-        const startTs = publicMethod.getTimestamp(getTime.value)
-        ElNotification({
-          title: '计时模式',
-          message: h(CountDown, {
-            currentTime: startTs,
-            startTime: startTs,
-            endTime: endTs,
-            dayTxt: '天',
-            hourTxt: '小时',
-            minutesTxt: '分钟',
-            secondsTxt: '秒',
-          }),
-          duration: 0,
-          position: 'bottom-right',
-          showClose: false,
-          dangerouslyUseHTMLString: false,
-        })
+        const endMs = publicMethod.getTimestamp(item.end_date) * 1000
+
+        const formatText = () => {
+          const now = Date.now()
+          const left = Math.max(0, Math.floor((endMs - now) / 1000))
+          const m = Math.floor(left / 60)
+          const s = left % 60
+          return `剩余 ${m} 分 ${s} 秒`
+        }
+
+        // 通知不存在时才创建（整个计时周期只创建一次）
+        if (!document.querySelector('.' + TIMER_NOTIF_CLASS)) {
+          ElNotification({
+            customClass: TIMER_NOTIF_CLASS,
+            title: '计时模式',
+            message: formatText(),
+            duration: 0,
+            position: 'bottom-right',
+            showClose: false,
+          })
+        }
+
+        // 重置计数定时器（每秒更新通知文字）
+        if (countdownTimer) clearInterval(countdownTimer)
+        countdownTimer = setInterval(() => {
+          const el = document.querySelector('.' + TIMER_NOTIF_CLASS)
+          const content = el?.querySelector?.('.el-notification__content')
+          if (content) {
+            const text = formatText()
+            content.textContent = text
+            if (text.includes('剩余 0 分 0 秒')) {
+              clearInterval(countdownTimer)
+              countdownTimer = null
+              el.remove()
+              autoStopTimerMode()
+            }
+          }
+        }, 1000)
       }
     })
     .catch(() => {
@@ -1012,10 +1041,13 @@ onMounted(() => {
   setCurrentTime()
   fetchData()
   fetchTimerMode()
+  timerModePoll = setInterval(fetchTimerMode, 10000)
 })
 
 onBeforeUnmount(() => {
   clearAllTimers()
+  if (timerModePoll) clearInterval(timerModePoll)
+  if (countdownTimer) clearInterval(countdownTimer)
   ElNotification.closeAll()
 })
 </script>

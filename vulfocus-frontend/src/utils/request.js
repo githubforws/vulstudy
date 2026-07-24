@@ -32,6 +32,17 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   response => {
     const res = response
+    const data = res.data || {}
+
+    // 检查业务状态码（兼容 code 和 status 两种返回格式）
+    // 200=成功, 201=创建成功, 1001=任务执行中 — 均为正常状态
+    const bizCode = data.code ?? data.status
+    if (bizCode !== undefined && bizCode !== 200 && bizCode !== 201 && bizCode !== 1001
+        && String(bizCode) !== '200' && String(bizCode) !== '201' && String(bizCode) !== '1001') {
+      const msg = data.message || data.msg || '请求失败'
+      ElMessage.error(msg)
+      return Promise.reject(new Error(msg))
+    }
 
     if (res.status > 300) {
       const data = res.data || {}

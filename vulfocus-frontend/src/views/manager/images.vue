@@ -723,14 +723,6 @@ async function loadLocalImages() {
   try {
     const res = await ImageLocal()
     const data = res.data
-    // 检查后端返回的业务状态码
-    if (data.code && data.code !== 200) {
-      ElMessage.warning(data.msg || '加载本地镜像失败')
-      localImages.value = []
-      filteredLocalImages.value = []
-      selectedLocals.value = []
-      return
-    }
     const list = data.data || data.results || []
     localImages.value = (Array.isArray(list) ? list : []).map(item => ({
       image_name: item.image_name || item.name || item,

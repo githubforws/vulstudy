@@ -324,12 +324,8 @@ async function handleSaveSystem() {
   formData.append('url_name', websiteForm.url_name)
 
   try {
-    const res = await settingUpdate(formData)
-    if (res.data && res.data.code !== 200) {
-      ElMessage.error(res.data.msg || '保存失败')
-    } else {
-      ElMessage.success('系统设置保存成功')
-    }
+    await settingUpdate(formData)
+    ElMessage.success('系统设置保存成功')
   } catch (err) {
     // Error already displayed by request.js interceptor
   } finally {
@@ -402,12 +398,8 @@ async function handleSaveWebsite() {
   formData.append('enterprise_bg', websiteForm.enterprise_bg)
 
   try {
-    const res = await enterpriseUpdate(formData)
-    if (res.data && res.data.code !== 200) {
-      ElMessage.error(res.data.msg || '保存失败')
-    } else {
-      ElMessage.success('网站设置保存成功')
-    }
+    await enterpriseUpdate(formData)
+    ElMessage.success('网站设置保存成功')
   } catch (err) {
     // Error already displayed by request.js interceptor
   } finally {
